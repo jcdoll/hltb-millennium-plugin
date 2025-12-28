@@ -3,7 +3,6 @@ import { fetchHltbData, formatTime, type HltbGameResult } from './services/hltbA
 
 let steamDocument: Document | undefined;
 let currentAppId: number | null = null;
-let debugBox: HTMLElement | null = null;
 let observer: MutationObserver | null = null;
 
 // Styles matching hltb-for-deck
@@ -67,13 +66,6 @@ const HLTB_STYLES = `
   color: #ffffff;
 }
 `;
-
-function debug(msg: string): void {
-  if (debugBox) {
-    debugBox.textContent = msg;
-  }
-  console.log('[HLTB] ' + msg);
-}
 
 function injectStyles(): void {
   if (!steamDocument || steamDocument.getElementById('hltb-styles')) return;
@@ -186,14 +178,12 @@ async function checkAndInject(): Promise<void> {
 
   const headerContainer = headerImg.closest('._2aPcBP45fdgOK22RN0jbhm');
   if (!headerContainer) {
-    debug(`No container found`);
     return;
   }
 
   // Show loading placeholder immediately
   (headerContainer as HTMLElement).style.position = 'relative';
   headerContainer.appendChild(createLoadingDisplay());
-  debug(`Fetching ${appId}...`);
 
   try {
     const result = await fetchHltbData(appId);
@@ -209,31 +199,23 @@ async function checkAndInject(): Promise<void> {
       return false;
     };
 
-    if (updateDisplay(result.data)) {
-      debug(result.fromCache ? `Cached: ${appId}` : `Done: ${appId}`);
-    } else {
-      debug(`No HLTB: ${appId}`);
-    }
+    updateDisplay(result.data);
 
     // Handle background refresh for stale data
     if (result.refreshPromise) {
       result.refreshPromise.then((newData) => {
         if (newData && currentAppId === appId) {
           updateDisplay(newData);
-          debug(`Refreshed: ${appId}`);
         }
       });
     }
   } catch (e) {
     // Keep placeholder on error
-    debug(`Error: ${e}`);
   }
 }
 
 function setupObserver(): void {
   if (!steamDocument) return;
-
-  debug('Observer on body');
 
   observer = new MutationObserver(() => {
     checkAndInject();
@@ -255,12 +237,6 @@ async function init(): Promise<void> {
     steamDocument = SteamUIStore?.WindowStore?.SteamUIWindows?.[0]?.m_BrowserWindow?.document;
     await sleep(500);
   }
-
-  // Debug box
-  debugBox = steamDocument.createElement('div');
-  debugBox.style.cssText = 'position:fixed;bottom:10px;left:10px;padding:8px 12px;background:rgba(0,0,0,0.8);color:#0f0;font-size:12px;font-family:monospace;z-index:99999;border-radius:4px;max-width:400px;word-break:break-all;';
-  debugBox.textContent = 'HLTB Ready';
-  steamDocument.body.appendChild(debugBox);
 
   injectStyles();
   setupObserver();

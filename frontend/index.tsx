@@ -4,6 +4,7 @@ import { fetchHltbData, formatTime, type HltbGameResult } from './services/hltbA
 let steamDocument: Document | undefined;
 let currentAppId: number | null = null;
 let debugBox: HTMLElement | null = null;
+let observer: MutationObserver | null = null;
 
 // Styles matching hltb-for-deck
 const HLTB_STYLES = `
@@ -139,14 +140,12 @@ async function checkAndInject(): Promise<void> {
   const headerImg = steamDocument?.querySelector('._3NBxSLAZLbbbnul8KfDFjw._2dzwXkCVAuZGFC-qKgo8XB') as HTMLImageElement | null;
 
   if (!headerImg) {
-    debug('No header img');
     return;
   }
 
   const src = headerImg.src || '';
   const match = src.match(/\/assets\/(\d+)/);
   if (!match) {
-    debug(`No appid in src`);
     return;
   }
 
@@ -164,7 +163,6 @@ async function checkAndInject(): Promise<void> {
   try {
     const data = await fetchHltbData(appId);
     if (data && (data.comp_main > 0 || data.comp_plus > 0 || data.comp_100 > 0)) {
-      // Go up to level 4 - the consistent container (_2aPcBP45fdgOK22RN0jbhm)
       const headerContainer = headerImg.closest('._2aPcBP45fdgOK22RN0jbhm');
 
       if (headerContainer) {
@@ -182,15 +180,22 @@ async function checkAndInject(): Promise<void> {
   }
 }
 
-async function pollLoop(): Promise<void> {
-  while (true) {
-    try {
-      await checkAndInject();
-    } catch (e) {
-      debug(`Loop error: ${e}`);
-    }
-    await sleep(500);
-  }
+function setupObserver(): void {
+  if (!steamDocument) return;
+
+  debug('Observer on body');
+
+  observer = new MutationObserver(() => {
+    checkAndInject();
+  });
+
+  observer.observe(steamDocument.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  // Initial check
+  checkAndInject();
 }
 
 async function init(): Promise<void> {
@@ -208,7 +213,7 @@ async function init(): Promise<void> {
   steamDocument.body.appendChild(debugBox);
 
   injectStyles();
-  pollLoop();
+  setupObserver();
 }
 
 init();

@@ -87,6 +87,32 @@ function removeExisting(): void {
   steamDocument?.getElementById('hltb-for-millennium')?.remove();
 }
 
+function createLoadingDisplay(): HTMLElement {
+  const container = steamDocument!.createElement('div');
+  container.id = 'hltb-for-millennium';
+
+  container.innerHTML = `
+    <div class="hltb-info">
+      <ul>
+        <li>
+          <p class="hltb-gametime">--</p>
+          <p class="hltb-label">Main Story</p>
+        </li>
+        <li>
+          <p class="hltb-gametime">--</p>
+          <p class="hltb-label">Main + Extras</p>
+        </li>
+        <li>
+          <p class="hltb-gametime">--</p>
+          <p class="hltb-label">Completionist</p>
+        </li>
+      </ul>
+    </div>
+  `;
+
+  return container;
+}
+
 function createDisplay(data: HltbGameResult): HTMLElement {
   const container = steamDocument!.createElement('div');
   container.id = 'hltb-for-millennium';
@@ -158,24 +184,48 @@ async function checkAndInject(): Promise<void> {
   currentAppId = appId;
   removeExisting();
 
+  const headerContainer = headerImg.closest('._2aPcBP45fdgOK22RN0jbhm');
+  if (!headerContainer) {
+    debug(`No container found`);
+    return;
+  }
+
+  // Show loading placeholder immediately
+  (headerContainer as HTMLElement).style.position = 'relative';
+  headerContainer.appendChild(createLoadingDisplay());
   debug(`Fetching ${appId}...`);
 
   try {
-    const data = await fetchHltbData(appId);
-    if (data && (data.comp_main > 0 || data.comp_plus > 0 || data.comp_100 > 0)) {
-      const headerContainer = headerImg.closest('._2aPcBP45fdgOK22RN0jbhm');
+    const result = await fetchHltbData(appId);
+    const existing = steamDocument?.getElementById('hltb-for-millennium');
 
-      if (headerContainer) {
-        (headerContainer as HTMLElement).style.position = 'relative';
-        headerContainer.appendChild(createDisplay(data));
-        debug(`Done: ${appId}`);
-      } else {
-        debug(`No container found`);
+    const updateDisplay = (data: typeof result.data) => {
+      if (data && (data.comp_main > 0 || data.comp_plus > 0 || data.comp_100 > 0)) {
+        if (existing) {
+          existing.innerHTML = createDisplay(data).innerHTML;
+        }
+        return true;
       }
+      return false;
+    };
+
+    if (updateDisplay(result.data)) {
+      debug(result.fromCache ? `Cached: ${appId}` : `Done: ${appId}`);
     } else {
       debug(`No HLTB: ${appId}`);
     }
+
+    // Handle background refresh for stale data
+    if (result.refreshPromise) {
+      result.refreshPromise.then((newData) => {
+        if (newData && currentAppId === appId) {
+          updateDisplay(newData);
+          debug(`Refreshed: ${appId}`);
+        }
+      });
+    }
   } catch (e) {
+    // Keep placeholder on error
     debug(`Error: ${e}`);
   }
 }

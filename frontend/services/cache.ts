@@ -1,6 +1,6 @@
 import type { HltbGameResult } from './hltbApi';
 
-interface CacheEntry {
+export interface CacheEntry {
   data: HltbGameResult | null;
   timestamp: number;
   notFound: boolean;
@@ -14,9 +14,9 @@ const CACHE_KEY = 'hltb-millennium-cache';
 const CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours
 
 /**
- * Get cached HLTB data for an app
+ * Get cached HLTB data for an app (returns even if stale)
  */
-export function getCache(appId: number): CacheEntry | null {
+export function getCache(appId: number): { entry: CacheEntry; isStale: boolean } | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
@@ -26,14 +26,8 @@ export function getCache(appId: number): CacheEntry | null {
 
     if (!entry) return null;
 
-    // Check if expired
-    if (Date.now() - entry.timestamp > CACHE_DURATION) {
-      delete cache[appId];
-      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-      return null;
-    }
-
-    return entry;
+    const isStale = Date.now() - entry.timestamp > CACHE_DURATION;
+    return { entry, isStale };
   } catch (e) {
     console.error('[HLTB] Cache read error:', e);
     return null;

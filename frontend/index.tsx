@@ -244,6 +244,6 @@ async function init(): Promise<void> {
 
 init();
 
-export default function() {
-  return { title: 'HLTB', icon: null, content: null };
+export default async function PluginMain() {
+  // Plugin initialization is handled by init()
 }

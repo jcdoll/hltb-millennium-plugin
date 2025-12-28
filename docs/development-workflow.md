@@ -18,7 +18,7 @@ Development mode enables CEF DevTools, hot reload, and verbose logging.
 
 Windows (PowerShell):
 ```powershell
-& "$((gp 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam').InstallPath)\steam.exe" -dev
+Start-Process "C:\Program Files (x86)\Steam\steam.exe" -ArgumentList "-dev"
 ```
 
 Windows (Command Prompt):
@@ -129,10 +129,12 @@ Use `tail -f` on Linux or a log viewer on Windows to monitor logs in real-time.
 
 Launch Steam directly in Big Picture mode:
 
+Windows (PowerShell):
 ```powershell
-steam.exe -gamepadui -dev
+Start-Process "C:\Program Files (x86)\Steam\steam.exe" -ArgumentList "-gamepadui -dev"
 ```
 
+Linux:
 ```bash
 steam -gamepadui -dev
 ```

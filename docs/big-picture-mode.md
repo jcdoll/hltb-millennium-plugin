@@ -140,10 +140,12 @@ const SELECTORS = {
 
 Launch Steam in Big Picture mode with development features:
 
+Windows (PowerShell):
 ```powershell
-steam.exe -gamepadui -dev
+Start-Process "C:\Program Files (x86)\Steam\steam.exe" -ArgumentList "-gamepadui -dev"
 ```
 
+Linux:
 ```bash
 steam -gamepadui -dev
 ```

@@ -39,3 +39,7 @@ luac.out
 *.x86_64
 *.hex
 
+# Project specific
+node_modules/
+.millennium/
+package-lock.json

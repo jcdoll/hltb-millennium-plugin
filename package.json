@@ -1,0 +1,20 @@
+{
+  "name": "hltb-for-millennium",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "millennium-ttc --build dev",
+    "watch": "millennium-ttc --build dev --watch",
+    "build": "millennium-ttc --build prod"
+  },
+  "dependencies": {
+    "@steambrew/client": "^5.5.3",
+    "@steambrew/api": "^5.5.3",
+    "@steambrew/webkit": "^5.5.3"
+  },
+  "devDependencies": {
+    "@steambrew/ttc": "^2.7.3",
+    "@types/react": "^18.2.0",
+    "typescript": "^5.0.0"
+  }
+}

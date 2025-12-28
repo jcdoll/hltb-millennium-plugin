@@ -1,0 +1,7 @@
+{
+  "$schema": "https://millennium.web.app/schemas/v2/plugin.schema.json",
+  "name": "hltb-for-millennium",
+  "common_name": "HLTB for Steam",
+  "description": "Displays How Long To Beat completion times on game pages",
+  "version": "1.0.0"
+}

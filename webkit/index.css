@@ -1,0 +1,87 @@
+/* HLTB for Millennium - Styles */
+
+.hltb-container {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.hltb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.hltb-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+.hltb-link {
+  font-size: 11px;
+  color: #66c0f4;
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.hltb-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.hltb-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.hltb-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.hltb-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 2px;
+}
+
+.hltb-stat-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.hltb-stat-count {
+  font-size: 9px;
+  opacity: 0.4;
+  margin-top: 1px;
+}
+
+/* Loading state */
+.hltb-container.hltb-loading .hltb-stats {
+  opacity: 0.5;
+}
+
+/* Error state */
+.hltb-container.hltb-error .hltb-stats {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* Responsive: Stack on narrow containers */
+@media (max-width: 300px) {
+  .hltb-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

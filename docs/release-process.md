@@ -31,6 +31,27 @@ Before submitting:
 
 4. Wait for maintainer code review and approval
 
+## Updating an Existing PR
+
+If you have an open PR and need to update the submodule to point to a newer commit:
+
+1. In your PluginDatabase checkout, update the submodule to the latest:
+   ```bash
+   cd plugins/hltb-millennium-plugin
+   git fetch origin
+   git checkout origin/main
+   cd ../..
+   ```
+
+2. Commit and push the updated submodule pointer:
+   ```bash
+   git add plugins/hltb-millennium-plugin
+   git commit -m "Update hltb-millennium-plugin to latest"
+   git push
+   ```
+
+The PR will automatically reflect the new submodule commit.
+
 ## Publishing Updates
 
 When releasing a new version:

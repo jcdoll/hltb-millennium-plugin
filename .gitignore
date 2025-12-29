@@ -42,3 +42,4 @@ luac.out
 # Project specific
 node_modules/
 .millennium/
+nul

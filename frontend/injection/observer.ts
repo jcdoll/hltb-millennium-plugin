@@ -1,5 +1,5 @@
 import { sleep } from '@steambrew/client';
-import type { UIModeConfig } from '../types';
+import type { LibrarySelectors } from '../types';
 import { log } from '../services/logger';
 import { fetchHltbData } from '../services/hltbApi';
 import { getCache } from '../services/cache';
@@ -24,8 +24,8 @@ export function resetState(): void {
   processingAppId = null;
 }
 
-async function handleGamePage(doc: Document, config: UIModeConfig): Promise<void> {
-  const gamePage = detectGamePage(doc, config);
+async function handleGamePage(doc: Document, selectors: LibrarySelectors): Promise<void> {
+  const gamePage = detectGamePage(doc, selectors);
   if (!gamePage) {
     return;
   }
@@ -100,7 +100,7 @@ async function handleGamePage(doc: Document, config: UIModeConfig): Promise<void
   }
 }
 
-export async function setupObserver(doc: Document, config: UIModeConfig): Promise<void> {
+export async function setupObserver(doc: Document, selectors: LibrarySelectors): Promise<void> {
   // Clean up existing observer
   if (observer) {
     observer.disconnect();
@@ -110,7 +110,7 @@ export async function setupObserver(doc: Document, config: UIModeConfig): Promis
   injectStyles(doc);
 
   observer = new MutationObserver(() => {
-    handleGamePage(doc, config);
+    handleGamePage(doc, selectors);
   });
 
   observer.observe(doc.body, {
@@ -118,14 +118,14 @@ export async function setupObserver(doc: Document, config: UIModeConfig): Promis
     subtree: true,
   });
 
-  log('MutationObserver set up for', config.modeName, 'mode');
+  log('MutationObserver set up');
 
   // Retry loop to find game page
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const gamePage = detectGamePage(doc, config);
+    const gamePage = detectGamePage(doc, selectors);
     if (gamePage) {
       log('setupObserver: game page found on attempt', attempt, 'of', MAX_RETRIES);
-      handleGamePage(doc, config);
+      handleGamePage(doc, selectors);
       return;
     }
     await sleep(RETRY_DELAY_MS);

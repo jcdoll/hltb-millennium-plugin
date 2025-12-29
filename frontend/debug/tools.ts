@@ -1,11 +1,9 @@
-import { EUIMode } from '../types';
 import { log } from '../services/logger';
-import { getCurrentMode, getCurrentConfig } from '../ui/uiMode';
+import { LIBRARY_SELECTORS } from '../types';
 import { clearCache, getCacheStats } from '../services/cache';
 
 export function logDOMStructure(doc: Document, selector?: string): void {
   log('=== DOM Structure Debug ===');
-  log('Mode:', getCurrentMode() === EUIMode.GamePad ? 'Big Picture' : 'Desktop');
   log('Document title:', doc.title);
   log('Body classes:', doc.body?.className);
 
@@ -39,8 +37,7 @@ export function logDOMStructure(doc: Document, selector?: string): void {
 export function exposeDebugTools(doc: Document): void {
   const debugObj = {
     logDOM: (selector?: string) => logDOMStructure(doc, selector),
-    getMode: () => (getCurrentMode() === EUIMode.GamePad ? 'Big Picture' : 'Desktop'),
-    getConfig: () => getCurrentConfig(),
+    getSelectors: () => LIBRARY_SELECTORS,
     findImages: () => {
       const images = doc.querySelectorAll('img');
       images.forEach((img, i) => {

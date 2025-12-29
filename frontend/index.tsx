@@ -1,12 +1,6 @@
-import { definePlugin, IconsModule, Field, DialogButton } from '@steambrew/client';
+import { definePlugin, Millennium, IconsModule, Field, DialogButton } from '@steambrew/client';
 import { log } from './services/logger';
-import {
-  initUIMode,
-  getCurrentConfig,
-  getCurrentDocument,
-  registerModeChangeListener,
-  onModeChange,
-} from './ui/uiMode';
+import { LIBRARY_SELECTORS } from './types';
 import { setupObserver, resetState, disconnectObserver } from './injection/observer';
 import { exposeDebugTools, removeDebugTools } from './debug/tools';
 import { removeStyles } from './display/styles';
@@ -15,69 +9,7 @@ import { clearCache, getCacheStats } from './services/cache';
 
 const { useState } = (window as any).SP_REACT;
 
-let unsubscribeModeChange: (() => void) | null = null;
-
-async function init(): Promise<void> {
-  log('Initializing HLTB plugin...');
-
-  try {
-    const { mode, document } = await initUIMode();
-    const config = getCurrentConfig();
-
-    log('Mode:', config.modeName);
-    log('Using selectors:', {
-      headerImage: config.headerImageSelector,
-      fallbackImage: config.fallbackImageSelector,
-      container: config.containerSelector,
-    });
-
-    await setupObserver(document, config);
-    exposeDebugTools(document);
-
-    registerModeChangeListener();
-
-    unsubscribeModeChange = onModeChange(async (newMode, newDoc) => {
-      log('Reinitializing for mode change...');
-
-      // Clean up old document first
-      const oldDoc = getCurrentDocument();
-      if (oldDoc && oldDoc !== newDoc) {
-        removeDebugTools(oldDoc);
-        removeStyles(oldDoc);
-        removeExistingDisplay(oldDoc);
-      }
-
-      resetState();
-      const newConfig = getCurrentConfig();
-      await setupObserver(newDoc, newConfig);
-      exposeDebugTools(newDoc);
-      log('Reinitialized for', newConfig.modeName, 'mode');
-    });
-  } catch (e) {
-    log('Failed to initialize:', e);
-  }
-}
-
-function cleanup(): void {
-  log('Cleaning up HLTB plugin...');
-
-  if (unsubscribeModeChange) {
-    unsubscribeModeChange();
-    unsubscribeModeChange = null;
-  }
-
-  disconnectObserver();
-
-  const doc = getCurrentDocument();
-  if (doc) {
-    removeDebugTools(doc);
-    removeStyles(doc);
-    removeExistingDisplay(doc);
-  }
-
-  resetState();
-  log('HLTB plugin cleanup complete');
-}
+let currentDocument: Document | undefined;
 
 const SettingsContent = () => {
   const [message, setMessage] = useState('');
@@ -113,12 +45,35 @@ const SettingsContent = () => {
 };
 
 export default definePlugin(() => {
-  init();
+  log('HLTB plugin loading...');
+
+  Millennium.AddWindowCreateHook?.((context: any) => {
+    // Only handle main Steam windows (Desktop or Big Picture)
+    if (!context.m_strName?.startsWith('SP ')) return;
+
+    const doc = context.m_popup?.document;
+    if (!doc?.body) return;
+
+    log('Window created:', context.m_strName);
+
+    // Clean up old document if switching modes
+    if (currentDocument && currentDocument !== doc) {
+      log('Mode switch detected, cleaning up old document');
+      removeDebugTools(currentDocument);
+      removeStyles(currentDocument);
+      removeExistingDisplay(currentDocument);
+      disconnectObserver();
+      resetState();
+    }
+
+    currentDocument = doc;
+    setupObserver(doc, LIBRARY_SELECTORS);
+    exposeDebugTools(doc);
+  });
+
   return {
     title: 'HLTB for Steam',
     icon: <IconsModule.Settings />,
     content: <SettingsContent />,
-    // onDismount is not currently called by Millennium, but kept for future compatibility
-    onDismount: cleanup,
   };
 });

@@ -1,4 +1,4 @@
-import type { UIModeConfig, GamePageInfo } from '../types';
+import type { LibrarySelectors, GamePageInfo } from '../types';
 
 function tryExtractGamePage(
   doc: Document,
@@ -20,10 +20,10 @@ function tryExtractGamePage(
   return { appId, container };
 }
 
-export function detectGamePage(doc: Document, config: UIModeConfig): GamePageInfo | null {
+export function detectGamePage(doc: Document, selectors: LibrarySelectors): GamePageInfo | null {
   // Try primary selector first (logo.png), then fallback (library_hero.jpg)
   return (
-    tryExtractGamePage(doc, config.headerImageSelector, config.containerSelector, config.appIdPattern) ||
-    tryExtractGamePage(doc, config.fallbackImageSelector, config.containerSelector, config.appIdPattern)
+    tryExtractGamePage(doc, selectors.headerImageSelector, selectors.containerSelector, selectors.appIdPattern) ||
+    tryExtractGamePage(doc, selectors.fallbackImageSelector, selectors.containerSelector, selectors.appIdPattern)
   );
 }

@@ -64,7 +64,8 @@ function M.get_auth_token(force_refresh)
     return data.token, nil
 end
 
--- Build search payload
+-- Build search payload matching HLTB's expected API format.
+-- The searchOptions structure mirrors what the HLTB website sends.
 local function get_search_request_data(game_name, modifier, page)
     modifier = modifier or ""
     page = page or 1
@@ -261,6 +262,7 @@ function M.fetch_game_data(game_id)
     return game_data
 end
 
+-- Clear cached auth token
 function M.clear_cache()
     cached_token = nil
     token_expires_at = 0

@@ -3,6 +3,11 @@
 
     Scrapes HLTB's NextJS website to find dynamic API endpoints.
     Handles homepage caching, search URL extraction, and build ID extraction.
+
+    HLTB's API is undocumented and the search endpoint path has changed in the past.
+    Dynamic endpoint detection (used by other HLTB client projects) allows the plugin
+    to adapt to API changes without code updates. Falls back to "api/search" if
+    discovery fails.
 ]]
 
 local http = require("http")
@@ -92,7 +97,8 @@ local function extract_search_url()
         if script_resp and script_resp.status == 200 and script_resp.body then
             local content = script_resp.body
 
-            -- Look for: "/api/xxx" with POST nearby
+            -- Look for API paths like "/api/xxx" and verify they're used with POST
+            -- Pattern matches: fetch("/api/xxx", { ... method: "POST" ... })
             for api_path in content:gmatch('["\'](/api/[a-zA-Z0-9_]+)["\']') do
                 local endpoint = api_path:match('/api/([a-zA-Z0-9_]+)')
 
@@ -168,6 +174,7 @@ function M.get_build_id()
     return nil
 end
 
+-- Clear cached homepage, search URL, and build ID
 function M.clear_cache()
     cached_homepage = nil
     cached_search_url = nil

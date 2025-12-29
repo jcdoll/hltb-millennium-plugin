@@ -15,6 +15,10 @@ M.RETRY_DISTANCE_RATIO = 0.2  -- Retry with simplified name if distance > 20% of
 M.RETRY_DISTANCE_MIN = 5      -- Minimum distance threshold for retry
 M.MAX_STEAM_ID_CHECKS = 3     -- Max candidates to check for Steam ID match
 
+-- Determine if the match is poor enough to warrant retrying with a simplified name.
+-- Uses a dynamic threshold: 20% of name length or minimum 5 edits, whichever is greater.
+-- Longer names allow more edits before triggering retry (e.g., 30-char name allows 6 edits).
+-- Note: These values are initial guesses and may need tuning based on real-world results.
 local function should_retry_with_simplified(distance, name_length)
     local threshold = math.max(M.RETRY_DISTANCE_MIN, math.floor(name_length * M.RETRY_DISTANCE_RATIO))
     return distance > threshold

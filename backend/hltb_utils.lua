@@ -1,5 +1,12 @@
 --[[
-    Shared utilities
+    HLTB String Utilities
+
+    Provides string manipulation functions for game name matching:
+    - sanitize_game_name: Remove trademark symbols for comparison
+    - simplify_game_name: Strip edition suffixes for fallback search
+    - levenshtein_distance: Calculate edit distance between strings
+    - calculate_similarity: Compute 0.0-1.0 similarity score
+    - seconds_to_hours: Convert HLTB time values to hours
 ]]
 
 local M = {}
@@ -40,13 +47,24 @@ function M.sanitize_game_name(name)
     return name
 end
 
--- Simplify game name for fallback search (strip edition suffixes, year tags, etc.)
+--[[
+    Simplify game name for fallback search by stripping common suffixes.
+
+    Stripped patterns:
+    - Edition suffixes: Enhanced, Complete, Definitive, Ultimate, Special, Legacy, Maximum, GOTY
+    - Anniversary Edition (including "40th Anniversary Edition" etc.)
+    - Remastered, Director's Cut, Collection
+    - Year tags: (2013), (2020), etc.
+    - Trailing punctuation: dashes, colons
+
+    Loops until no more changes to handle stacked suffixes like "Enhanced Edition Director's Cut".
+]]
 function M.simplify_game_name(name)
     -- Normalize Unicode dashes to ASCII hyphen for pattern matching
     name = name:gsub("–", "-")  -- en-dash U+2013
     name = name:gsub("—", "-")  -- em-dash U+2014
 
-    -- Loop until no more changes (handles stacked suffixes like "Enhanced Edition Director's Cut")
+    -- Loop until no more changes
     local prev
     repeat
         prev = name

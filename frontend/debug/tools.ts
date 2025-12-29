@@ -84,7 +84,10 @@ export function exposeDebugTools(doc: Document): void {
   };
 
   // @ts-ignore
-  doc.defaultView.hltbDebug = debugObj;
+  if (doc.defaultView) {
+    // @ts-ignore
+    doc.defaultView.hltbDebug = debugObj;
+  }
   // @ts-ignore
   globalThis.hltbDebug = debugObj;
 

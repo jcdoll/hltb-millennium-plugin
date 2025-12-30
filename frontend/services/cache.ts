@@ -24,7 +24,6 @@ export function getCache(appId: number): { entry: CacheEntry; isStale: boolean }
     if (!entry) return null;
 
     const isStale = Date.now() - entry.timestamp > CACHE_DURATION;
-    log(`Cache hit for appId ${appId}${isStale ? ' (stale)' : ''}`);
     return { entry, isStale };
   } catch (e) {
     logError('Cache read error:', e);

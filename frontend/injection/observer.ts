@@ -65,7 +65,7 @@ async function handleGamePage(doc: Document, selectors: LibrarySelectors): Promi
       const data = cached?.entry?.data;
 
       if (data && (data.comp_main || data.comp_plus || data.comp_100)) {
-        existing.innerHTML = createDisplay(doc, data).innerHTML;
+        existing.replaceWith(createDisplay(doc, data));
         return true;
       }
       return false;

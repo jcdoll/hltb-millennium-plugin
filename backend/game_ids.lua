@@ -83,6 +83,7 @@ return {
     [221380] = 12193, -- Age of Empires II: HD Edition
     [221680] = 14190, -- Rocksmith 2014
     [222940] = 9987, -- The King of Fighters XIII
+    [223710] = 2064, -- Cry of Fear
     [223870] = 12038, -- Ys II Complete
     [224420] = 256, -- Afterfall: InSanity
     [224540] = 178, -- Ace of Spades
@@ -275,6 +276,7 @@ return {
     [1608070] = 109435, -- Crisis Core: Final Fantasy VII Reunion
     [1614440] = 111259, -- Bo: Path of the Teal Lotus
     [1652250] = 132441, -- Tales & Tactics
+    [1654660] = 129877, -- En Garde!
     [1659040] = 79774, -- Hitman 3
     [1717640] = 123574, -- Mahokenshi
     [1718130] = 114146, -- SCP: Secret Files

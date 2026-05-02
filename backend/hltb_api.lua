@@ -22,19 +22,19 @@ M._http = http
 local cached_auth = nil
 local auth_expires_at = 0
 
--- Get auth struct (token + key/value pair)
-function M.get_auth(force_refresh)
-    local now = os.time()
-
-    if not force_refresh and cached_auth and now < auth_expires_at then
-        return cached_auth, nil
+-- Single attempt at fetching the auth token. Used by get_auth, which retries
+-- once with an invalidated endpoint cache if the first attempt fails.
+local function fetch_auth_once()
+    local init_url = endpoints.get_init_url()
+    if not init_url then
+        return nil, "endpoint discovery failed"
     end
 
-    local timestamp_ms = math.floor(now * 1000)
-    local url = endpoints.get_init_url() .. "?t=" .. timestamp_ms
+    local timestamp_ms = math.floor(os.time() * 1000)
+    local url = init_url .. "?t=" .. timestamp_ms
     logger:info("Fetching auth token...")
 
-    local response, err = http.get(url, {
+    local response, err = M._http.get(url, {
         headers = {
             ["User-Agent"] = endpoints.USER_AGENT,
             ["referer"] = endpoints.REFERER_HEADER
@@ -59,13 +59,36 @@ function M.get_auth(force_refresh)
         return nil, "No token in response"
     end
 
-    cached_auth = {
+    return {
         token = data.token,
         key = data.hpKey,
         value = data.hpVal
-    }
+    }, nil
+end
+
+-- Get auth struct (token + key/value pair).
+-- On the first failure we invalidate the endpoint discovery cache and retry
+-- once, in case HLTB rotated the API endpoint name mid-session.
+function M.get_auth(force_refresh)
+    local now = os.time()
+
+    if not force_refresh and cached_auth and now < auth_expires_at then
+        return cached_auth, nil
+    end
+
+    local auth, err = fetch_auth_once()
+    if not auth then
+        logger:info("Auth fetch failed (" .. err .. "), re-detecting endpoint and retrying")
+        endpoints.invalidate()
+        auth, err = fetch_auth_once()
+        if not auth then
+            return nil, err
+        end
+    end
+
+    cached_auth = auth
     auth_expires_at = now + M.TOKEN_TTL
-    logger:info("Got auth token" .. (data.hpKey and " with key/value" or ""))
+    logger:info("Got auth token" .. (auth.key and " with key/value" or ""))
 
     return cached_auth, nil
 end
@@ -142,54 +165,54 @@ local function get_search_request_headers(auth)
     return headers
 end
 
--- Search HLTB
-function M.search(query, options)
-    options = options or {}
-    local page = options.page or 1
-    local modifier = options.modifier or ""
-
+-- Single attempt at a search request. Returns response, err.
+local function search_once(query, options)
     local auth, auth_err = M.get_auth()
     if not auth then
-        logger:info("Failed to get auth: " .. (auth_err or "unknown"))
-        return nil
+        return nil, "auth: " .. (auth_err or "unknown")
+    end
+
+    local search_url = endpoints.get_search_url()
+    if not search_url then
+        return nil, "endpoint discovery failed"
     end
 
     local headers = get_search_request_headers(auth)
-    local search_url = endpoints.get_search_url()
-    local payload = get_search_request_data(query, modifier, page, auth)
+    local payload = get_search_request_data(query, options.modifier or "", options.page or 1, auth)
 
-    local response, err = http.request(search_url, {
+    return M._http.request(search_url, {
         method = "POST",
         headers = headers,
         data = payload,
         timeout = endpoints.TIMEOUT
     })
+end
 
-    if not response then
-        logger:info("Search request failed: " .. (err or "unknown"))
-        return nil
+-- Search HLTB.
+-- Failure handling has two retry triggers:
+--   1) HTTP 403 -> token expired server-side, refresh auth and retry once.
+--   2) Any other failure (transport error, non-200) -> assume HLTB rotated
+--      the endpoint, invalidate discovery, and retry once.
+function M.search(query, options)
+    options = options or {}
+
+    local response, err = search_once(query, options)
+
+    if response and response.status == 403 then
+        logger:info("Search returned 403, refreshing auth and retrying")
+        M.clear_cache()
+        response, err = search_once(query, options)
+    elseif (not response) or response.status ~= 200 then
+        local desc = response and ("HTTP " .. response.status) or (err or "unknown")
+        logger:info("Search failed (" .. desc .. "), re-detecting endpoint and retrying")
+        endpoints.invalidate()
+        M.clear_cache()
+        response, err = search_once(query, options)
     end
 
-    -- Retry once on 403 with a fresh token (HLTB expires tokens server-side)
-    if response.status == 403 then
-        logger:info("Search returned 403, refreshing auth and retrying...")
-        auth, auth_err = M.get_auth(true)
-        if not auth then
-            logger:info("Failed to refresh auth: " .. (auth_err or "unknown"))
-            return nil
-        end
-        headers = get_search_request_headers(auth)
-        payload = get_search_request_data(query, modifier, page, auth)
-        response, err = http.request(search_url, {
-            method = "POST",
-            headers = headers,
-            data = payload,
-            timeout = endpoints.TIMEOUT
-        })
-        if not response then
-            logger:info("Search retry failed: " .. (err or "unknown"))
-            return nil
-        end
+    if not response then
+        logger:info("Search retry failed: " .. (err or "unknown"))
+        return nil
     end
 
     if response.status ~= 200 then
@@ -227,25 +250,35 @@ function M.search(query, options)
     return data
 end
 
--- Fetch game data by game ID (for Steam ID verification)
-function M.fetch_game_data(game_id)
+-- Fetch game data by game ID (for Steam ID verification).
+-- Same retry-on-failure semantics as fetch_game_by_id: invalidate the
+-- discovery cache (which holds the build ID) and retry once.
+local function fetch_game_data_once(game_id)
     local build_id = endpoints.get_build_id()
     if not build_id then
-        return nil
+        return nil, "no build_id"
     end
 
     local url = endpoints.BASE_URL .. "_next/data/" .. build_id .. "/game/" .. game_id .. ".json"
     logger:info("Fetching game data: " .. url)
 
-    local headers = {
-        ["User-Agent"] = endpoints.USER_AGENT,
-        ["referer"] = endpoints.REFERER_HEADER
-    }
-
-    local response, err = http.get(url, {
-        headers = headers,
+    return M._http.get(url, {
+        headers = {
+            ["User-Agent"] = endpoints.USER_AGENT,
+            ["referer"] = endpoints.REFERER_HEADER
+        },
         timeout = endpoints.TIMEOUT
     })
+end
+
+function M.fetch_game_data(game_id)
+    local response, err = fetch_game_data_once(game_id)
+    if (not response) or response.status ~= 200 then
+        local desc = response and ("HTTP " .. response.status) or (err or "unknown")
+        logger:info("Game data fetch failed (" .. desc .. "), re-detecting build ID and retrying")
+        endpoints.invalidate()
+        response, err = fetch_game_data_once(game_id)
+    end
 
     if not response then
         logger:info("Game data request failed: " .. (err or "unknown"))
@@ -364,6 +397,24 @@ function M.fetch_steam_import(steam_user_id)
     return data.games, nil
 end
 
+-- Single attempt at fetching game data by HLTB ID.
+local function fetch_game_by_id_once(game_id)
+    local build_id = endpoints.get_build_id()
+    if not build_id then
+        return nil, "Could not get build ID"
+    end
+
+    local url = endpoints.BASE_URL .. "_next/data/" .. build_id .. "/game/" .. game_id .. ".json"
+
+    return M._http.get(url, {
+        headers = {
+            ["User-Agent"] = endpoints.USER_AGENT,
+            ["referer"] = endpoints.REFERER_HEADER
+        },
+        timeout = endpoints.TIMEOUT
+    })
+end
+
 -- Fetch game completion times directly by HLTB game ID.
 --
 -- Uses HLTB's NextJS data endpoint to get full game details including
@@ -374,6 +425,10 @@ end
 --
 -- API endpoint: GET https://howlongtobeat.com/_next/data/{buildId}/game/{gameId}.json
 -- Returns: Normalized game data with game_id, game_name, comp_main, comp_plus, comp_100.
+--
+-- On failure we invalidate the endpoint discovery cache (which includes the
+-- NextJS build ID) and retry once, since HLTB rotates the build ID on each
+-- deploy.
 function M.fetch_game_by_id(game_id)
     if not game_id then
         return nil, "No game ID provided"
@@ -381,22 +436,13 @@ function M.fetch_game_by_id(game_id)
 
     logger:info("Fetching game data for HLTB ID: " .. tostring(game_id))
 
-    local build_id = endpoints.get_build_id()
-    if not build_id then
-        return nil, "Could not get build ID"
+    local response, err = fetch_game_by_id_once(game_id)
+    if (not response) or response.status ~= 200 then
+        local desc = response and ("HTTP " .. response.status) or (err or "unknown")
+        logger:info("Game data fetch failed (" .. desc .. "), re-detecting build ID and retrying")
+        endpoints.invalidate()
+        response, err = fetch_game_by_id_once(game_id)
     end
-
-    local url = endpoints.BASE_URL .. "_next/data/" .. build_id .. "/game/" .. game_id .. ".json"
-
-    local headers = {
-        ["User-Agent"] = endpoints.USER_AGENT,
-        ["referer"] = endpoints.REFERER_HEADER
-    }
-
-    local response, err = M._http.get(url, {
-        headers = headers,
-        timeout = endpoints.TIMEOUT
-    })
 
     if not response then
         return nil, "Request failed: " .. (err or "unknown")

@@ -104,30 +104,48 @@ function M.get(app_id)
     return entry, is_stale
 end
 
-local function has_completion_times(data)
-    if not data then return false end
-    return (data.comp_main or 0) > 0
-        or (data.comp_plus or 0) > 0
-        or (data.comp_100 or 0) > 0
+-- Merge new data with existing cached data, preferring new values where present
+-- but preserving existing values when new is missing them. This protects against
+-- transient HLTB responses that drop a field (e.g. comp_100 unset on this fetch
+-- but present last fetch) from erasing previously-known values.
+local function merge_with_existing(new_data, existing_data)
+    if not existing_data then return new_data end
+    if not new_data then return existing_data end
+
+    local merged = {}
+    for k, v in pairs(new_data) do merged[k] = v end
+
+    -- Preserve game identity if new data is just a search miss
+    if not merged.game_id and existing_data.game_id then
+        merged.game_id = existing_data.game_id
+        merged.game_name = merged.game_name or existing_data.game_name
+    end
+
+    -- Preserve completion times field-by-field
+    for _, field in ipairs({ "comp_main", "comp_plus", "comp_100" }) do
+        local new_val = merged[field] or 0
+        local old_val = existing_data[field] or 0
+        if new_val <= 0 and old_val > 0 then
+            merged[field] = existing_data[field]
+        end
+    end
+
+    return merged
 end
 
 function M.set(app_id, data)
     local key = tostring(app_id)
 
-    -- Don't overwrite valid cached times with empty data
     local existing = result_cache[key]
-    if existing and has_completion_times(existing.data) and not has_completion_times(data) then
-        logger:info("Keeping cached data for app_id " .. key .. " (new data has no completion times)")
-        return
-    end
+    local merged = merge_with_existing(data, existing and existing.data or nil)
 
     result_cache[key] = {
-        data = data,
+        data = merged,
         timestamp = os.time(),
         -- True when fetch_fresh returned nil (network/lookup error).
         -- Partial results (HLTB returned no match) have data.searched_name
         -- but no data.game_id; the frontend handles these via the isMiss check.
-        notFound = data == nil,
+        notFound = merged == nil,
     }
 
     write_count = write_count + 1

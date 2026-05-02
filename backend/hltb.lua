@@ -26,7 +26,7 @@ M.fetch_game_by_id = api.fetch_game_by_id
 
 -- Clear all cached values
 function M.clear_cache()
-    endpoints.clear_cache()
+    endpoints.invalidate()
     api.clear_cache()
 end
 

@@ -4,10 +4,13 @@
     Scrapes HLTB's NextJS website to find dynamic API endpoints.
     Handles homepage caching, search URL extraction, and build ID extraction.
 
-    HLTB's API is undocumented and the search endpoint path has changed in the past.
-    Dynamic endpoint detection (used by other HLTB client projects) allows the plugin
-    to adapt to API changes without code updates. Falls back to "api/finder" if
-    discovery fails.
+    HLTB's API is undocumented and the search endpoint path has changed in the past
+    (search -> finder -> find -> bleed -> ...). Dynamic detection lets the plugin
+    follow rotations without code changes. There is no static fallback: if discovery
+    fails, callers should treat it as an error and let the user retry.
+
+    Callers in hltb_api.lua invoke M.invalidate() and retry once when a request
+    fails, which lets us recover from a mid-session rotation without restarting Steam.
 ]]
 
 local http = require("http")
@@ -19,7 +22,6 @@ M.BASE_URL = "https://howlongtobeat.com/"
 M.REFERER_HEADER = M.BASE_URL
 M.TIMEOUT = 60                        -- HTTP request timeout in seconds
 M.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-M.SEARCH_URL_FALLBACK = M.BASE_URL .. "api/find"  -- Used when dynamic endpoint discovery fails
 
 -- Known non-search API endpoints to skip
 local SKIP_ENDPOINTS = {
@@ -126,37 +128,36 @@ local function extract_search_url()
     return nil
 end
 
--- Get search URL with fallback logic
+-- Get search URL by scraping HLTB's JS bundles.
+-- Returns nil if discovery fails; callers should surface the error so
+-- the user can retry rather than silently using a stale endpoint.
 function M.get_search_url()
     if cached_search_url then
         return cached_search_url
     end
 
     local search_url = extract_search_url()
-
-    if search_url then
-        cached_search_url = M.BASE_URL .. search_url
-        logger:info("Search URL: " .. cached_search_url)
-    else
-        cached_search_url = M.SEARCH_URL_FALLBACK
-        logger:info("Using fallback search URL: " .. cached_search_url)
+    if not search_url then
+        logger:info("Endpoint discovery failed")
+        return nil
     end
 
+    cached_search_url = M.BASE_URL .. search_url
+    logger:info("Search URL: " .. cached_search_url)
     return cached_search_url
 end
 
 -- Get auth token init URL, derived from the search URL.
 --
--- Currently assumes the init endpoint is at {search_url}/init, which held
--- true when the endpoint moved from api/search to api/finder (the init
--- endpoint moved from api/search/init to api/finder/init accordingly).
---
--- If this assumption breaks in the future, we should discover the init URL
--- dynamically from the JS bundles the same way we discover the search URL.
--- The init fetch call can be identified by its pattern: a GET request to an
--- /api/* path that extracts .token from the JSON response.
+-- Currently assumes the init endpoint is at {search_url}/init, which has
+-- held true across endpoint rotations (api/search/init, api/finder/init,
+-- api/find/init, api/bleed/init). If this assumption breaks, we should
+-- discover the init URL dynamically from the JS bundles the same way we
+-- discover the search URL.
 function M.get_init_url()
-    return M.get_search_url() .. "/init"
+    local search_url = M.get_search_url()
+    if not search_url then return nil end
+    return search_url .. "/init"
 end
 
 -- Extract NextJS build ID from homepage (for game data requests)
@@ -188,8 +189,13 @@ function M.get_build_id()
     return nil
 end
 
--- Clear cached homepage, search URL, and build ID
-function M.clear_cache()
+-- Clear cached homepage, search URL, and build ID. Called by the API client
+-- when a request fails so the next call re-scrapes HLTB and picks up any
+-- endpoint rotation without requiring a Steam restart.
+function M.invalidate()
+    if cached_search_url or cached_build_id or cached_homepage then
+        logger:info("Invalidating endpoint discovery cache")
+    end
     cached_homepage = nil
     cached_search_url = nil
     cached_build_id = nil

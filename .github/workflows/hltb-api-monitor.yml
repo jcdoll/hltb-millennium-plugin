@@ -1,32 +1,54 @@
 name: HLTB API Monitor
 
+# Catches HLTB endpoint rotations early. Discovery is delegated to the plugin's
+# actual Lua module (backend/hltb_endpoint_discovery.lua) via
+# scripts/discover-endpoint.lua, so the monitor and the plugin share one source
+# of truth for which endpoint is current. Init/search are exercised in bash
+# against whatever endpoint the Lua module finds.
+
 on:
   schedule:
-    - cron: '0 12 * * *'  # Daily at noon UTC
+    - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
 
 jobs:
   check-api:
     runs-on: ubuntu-latest
+    env:
+      USER_AGENT: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      BASE_URL: 'https://howlongtobeat.com'
     steps:
-      - name: Check init endpoint
+      - uses: actions/checkout@v4
+
+      - name: Install Lua
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+
+      - name: Discover search endpoint via plugin discovery module
+        id: discover
+        run: |
+          set -euo pipefail
+          ENDPOINT=$(lua5.4 scripts/discover-endpoint.lua)
+          echo "Discovered endpoint: /api/$ENDPOINT"
+          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
+
+      - name: Hit init endpoint and capture token
         id: init
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-            -H "Referer: https://howlongtobeat.com/" \
-            "https://howlongtobeat.com/api/find/init?t=$(date +%s%3N)")
+          set -euo pipefail
+          ENDPOINT="${{ steps.discover.outputs.endpoint }}"
+          INIT_URL="$BASE_URL/api/$ENDPOINT/init?t=$(date +%s%3N)"
+
+          RESPONSE=$(curl -sS -w "\n%{http_code}" \
+            -H "User-Agent: $USER_AGENT" \
+            -H "Referer: $BASE_URL/" \
+            "$INIT_URL")
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | sed '$d')
 
-          echo "Init HTTP status: $HTTP_CODE"
-
-          echo "status=$HTTP_CODE" >> "$GITHUB_OUTPUT"
-          echo "body=$BODY" >> "$GITHUB_OUTPUT"
-
+          echo "Init HTTP $HTTP_CODE"
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Init endpoint returned HTTP $HTTP_CODE"
+            echo "::error::/api/$ENDPOINT/init returned HTTP $HTTP_CODE"
             exit 1
           fi
 
@@ -43,13 +65,14 @@ jobs:
             exit 1
           fi
 
-          echo "Init check passed"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
           echo "hp_key=$HP_KEY" >> "$GITHUB_OUTPUT"
           echo "hp_val=$HP_VAL" >> "$GITHUB_OUTPUT"
 
-      - name: Check search endpoint
+      - name: Hit search endpoint and validate result has completion times
         run: |
+          set -euo pipefail
+          ENDPOINT="${{ steps.discover.outputs.endpoint }}"
           TOKEN="${{ steps.init.outputs.token }}"
           HP_KEY="${{ steps.init.outputs.hp_key }}"
           HP_VAL="${{ steps.init.outputs.hp_val }}"
@@ -82,35 +105,45 @@ jobs:
               useCache: true
             } + { ($key): $val }')
 
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
+          RESPONSE=$(curl -sS -w "\n%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-            -H "Origin: https://howlongtobeat.com" \
-            -H "Referer: https://howlongtobeat.com/" \
+            -H "User-Agent: $USER_AGENT" \
+            -H "Origin: $BASE_URL" \
+            -H "Referer: $BASE_URL/" \
             -H "x-auth-token: $TOKEN" \
             -H "x-hp-key: $HP_KEY" \
             -H "x-hp-val: $HP_VAL" \
-            "https://howlongtobeat.com/api/find" \
+            "$BASE_URL/api/$ENDPOINT" \
             -d "$PAYLOAD")
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | sed '$d')
 
-          echo "Search HTTP status: $HTTP_CODE"
-          echo "status=$HTTP_CODE" >> "$GITHUB_OUTPUT"
-
+          echo "Search HTTP $HTTP_CODE"
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Search endpoint returned HTTP $HTTP_CODE"
+            echo "::error::/api/$ENDPOINT returned HTTP $HTTP_CODE"
             exit 1
           fi
 
-          RESULT_COUNT=$(echo "$BODY" | jq -r '.data | length')
-          echo "Search results: $RESULT_COUNT"
-
-          if [ "$RESULT_COUNT" = "0" ] || [ "$RESULT_COUNT" = "null" ]; then
+          RESULT_COUNT=$(echo "$BODY" | jq -r '.data | length // 0')
+          echo "Result count: $RESULT_COUNT"
+          if [ "$RESULT_COUNT" -lt 1 ]; then
             echo "::error::Search returned no results for 'Dark Souls'"
             exit 1
           fi
 
-          echo "Search check passed"
+          # Catch silent degradation: a 200 with results but zero completion
+          # times means HLTB changed their schema and we'd cache empty data.
+          COMP_MAIN=$(echo "$BODY" | jq -r '.data[0].comp_main // 0')
+          COMP_PLUS=$(echo "$BODY" | jq -r '.data[0].comp_plus // 0')
+          COMP_100=$(echo "$BODY" | jq -r '.data[0].comp_100 // 0')
+          GAME_NAME=$(echo "$BODY" | jq -r '.data[0].game_name // "?"')
+          echo "Top result: $GAME_NAME  main=$COMP_MAIN plus=$COMP_PLUS 100=$COMP_100"
+
+          if [ "$COMP_MAIN" -le 0 ] && [ "$COMP_PLUS" -le 0 ] && [ "$COMP_100" -le 0 ]; then
+            echo "::error::Top result has no completion times -- schema may have changed"
+            exit 1
+          fi
+
+          echo "Search check passed against /api/$ENDPOINT"

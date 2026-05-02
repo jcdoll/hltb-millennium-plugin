@@ -128,6 +128,83 @@ describe("cache", function()
             assert.is_true(entry.notFound)
             assert.is_false(is_stale)
         end)
+
+        it("preserves existing times when new data is empty search miss", function()
+            cache.set(12345, {
+                searched_name = "Dark Souls",
+                game_id = 2224,
+                game_name = "Dark Souls",
+                comp_main = 41.7,
+                comp_plus = 60.1,
+                comp_100 = 104.9,
+            })
+
+            -- Simulate a search miss after HLTB endpoint rotation
+            cache.set(12345, { searched_name = "Dark Souls" })
+
+            local entry = cache.get(12345)
+            assert.equals(2224, entry.data.game_id)
+            assert.equals("Dark Souls", entry.data.game_name)
+            assert.equals(41.7, entry.data.comp_main)
+            assert.equals(60.1, entry.data.comp_plus)
+            assert.equals(104.9, entry.data.comp_100)
+        end)
+
+        it("preserves missing fields when new data has only some times", function()
+            cache.set(12345, {
+                searched_name = "X",
+                game_id = 1,
+                game_name = "X",
+                comp_main = 10,
+                comp_plus = 20,
+                comp_100 = 30,
+            })
+
+            -- HLTB transiently drops comp_100 in this fetch
+            cache.set(12345, {
+                searched_name = "X",
+                game_id = 1,
+                game_name = "X",
+                comp_main = 11,
+                comp_plus = 21,
+                comp_100 = nil,
+            })
+
+            local entry = cache.get(12345)
+            assert.equals(11, entry.data.comp_main)
+            assert.equals(21, entry.data.comp_plus)
+            assert.equals(30, entry.data.comp_100)
+        end)
+
+        it("treats zero as missing when merging times", function()
+            cache.set(12345, { game_id = 1, comp_main = 10, comp_plus = 20, comp_100 = 30 })
+            cache.set(12345, { game_id = 1, comp_main = 11, comp_plus = 0, comp_100 = 0 })
+
+            local entry = cache.get(12345)
+            assert.equals(11, entry.data.comp_main)
+            assert.equals(20, entry.data.comp_plus)
+            assert.equals(30, entry.data.comp_100)
+        end)
+
+        it("uses new data when existing has fewer fields", function()
+            cache.set(12345, { game_id = 1, comp_main = 10 })
+            cache.set(12345, { game_id = 1, comp_main = 11, comp_plus = 21, comp_100 = 31 })
+
+            local entry = cache.get(12345)
+            assert.equals(11, entry.data.comp_main)
+            assert.equals(21, entry.data.comp_plus)
+            assert.equals(31, entry.data.comp_100)
+        end)
+
+        it("preserves game_id when new data is search miss only", function()
+            cache.set(12345, { game_id = 99, game_name = "Found Game", comp_main = 5 })
+            cache.set(12345, { searched_name = "Found Game" })
+
+            local entry = cache.get(12345)
+            assert.equals(99, entry.data.game_id)
+            assert.equals("Found Game", entry.data.game_name)
+            assert.equals(5, entry.data.comp_main)
+        end)
     end)
 
     describe("id cache", function()

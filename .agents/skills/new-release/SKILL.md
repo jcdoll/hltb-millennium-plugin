@@ -14,9 +14,25 @@ Before running this skill, run the `game-id-review` skill to ensure game IDs are
 ```text
 /new-release
 /new-release 1.2.3
+/new-release --dry-run
 ```
 
 If no version is provided, suggest a patch increment.
+
+## Dry Run
+
+When the user asks for a dry run, gather release state and present the release plan only.
+
+Do not:
+
+- edit files
+- run `git fetch`
+- commit or push
+- trigger workflows
+- modify GitHub releases
+- touch `../PluginDatabase`
+
+Use current local remote-tracking information and state that a real release would fetch before final validation.
 
 ## Workflow
 
@@ -39,6 +55,8 @@ git fetch origin
 git status -uno
 ```
 
+In dry-run mode, do not run `git fetch origin`; use existing local remote-tracking information instead.
+
 5. Get commits since last release for release notes:
 
 ```powershell
@@ -53,6 +71,8 @@ Exclude:
 - Trivial commits such as typos or formatting
 - Claude or Codex skill updates under `.claude` or `.agents`
 - CI and workflow updates under `.github`
+
+If no release-worthy changes remain after exclusions, stop and report that there is nothing user-facing to release. Continue only if the user explicitly says to release anyway.
 
 7. Verify `../PluginDatabase` exists and contains the submodule:
 
@@ -138,7 +158,13 @@ Abort if build fails.
 busted.bat tests/
 ```
 
-Abort if any tests fail. If `busted.bat` is not available, read `docs/development.md` section "Running Lua Tests" for setup instructions.
+If `busted.bat` is not available, try:
+
+```powershell
+busted tests/
+```
+
+Abort if any tests fail. If neither Lua test command is available, stop and report the missing dependency. Point the user to `docs/development.md` section "Running Lua Tests".
 
 #### Step 6: Commit
 
@@ -172,7 +198,11 @@ Poll every 10 seconds until status is `completed`. Abort if conclusion is not `s
 The workflow's generated release notes only produce auto-generated commit links. Replace them with the human-readable release notes generated in Phase 1:
 
 ```powershell
-gh release edit v{VERSION} --notes "{RELEASE_NOTES}"
+$releaseNotesPath = "release-notes-v{VERSION}.md"
+Set-Content -LiteralPath $releaseNotesPath -Value @"
+{RELEASE_NOTES}
+"@
+gh release edit v{VERSION} --notes-file $releaseNotesPath
 ```
 
 The notes should include category headers and end with a full changelog link:
@@ -211,10 +241,14 @@ Pop-Location
 
 ```powershell
 Push-Location ../PluginDatabase
-gh pr create --repo SteamClientHomebrew/PluginDatabase --title "Update HLTB for Steam to v{VERSION}" --body "Updates the HLTB for Steam plugin submodule to v{VERSION}.
+$prBodyPath = "hltb-plugin-database-pr-v{VERSION}.md"
+Set-Content -LiteralPath $prBodyPath -Value @"
+Updates the HLTB for Steam plugin submodule to v{VERSION}.
 
 ## Changes
-{RELEASE_NOTES_AS_BULLET_POINTS}"
+{RELEASE_NOTES_AS_BULLET_POINTS}
+"@
+gh pr create --repo SteamClientHomebrew/PluginDatabase --title "Update HLTB for Steam to v{VERSION}" --body-file $prBodyPath
 Pop-Location
 ```
 

@@ -51,11 +51,13 @@ Accept three input formats:
 1. Parse the arguments to extract the AppID and HLTB ID.
 2. Verify the AppID by fetching: `https://store.steampowered.com/app/{APPID}`.
 3. Verify the HLTB ID by fetching: `https://howlongtobeat.com/game/{HLTB_ID}`.
-4. If both verify cleanly, proceed to adding the mapping.
+4. Present the confirmation summary and ask the user to confirm the mapping before editing.
 
 ### Searching HLTB
 
-Prefer direct HLTB verification when accessible. If direct access fails or search results are unreliable, use IsThereAnyDeal as a proxy:
+Prefer direct HLTB verification when accessible. Use the HLTB page to confirm the numeric ID, HLTB name, and Steam profile link when present.
+
+If direct HLTB search or verification fails, use IsThereAnyDeal as a proxy or cross-check:
 
 1. Search: `{game_name} IsThereAnyDeal`
 2. Find the IsThereAnyDeal game page in results: `isthereanydeal.com/game/{slug}/info/`
@@ -77,14 +79,31 @@ Always present this exact format before asking for user confirmation:
 ### Adding the Mapping
 
 1. Read `backend/game_ids.lua`.
-2. Find the correct position to maintain numerical order by AppID.
-3. Insert the new mapping:
+2. Check whether the AppID already exists.
+   - If it exists, stop and report the existing mapping instead of adding a duplicate.
+   - If the existing mapping differs from the proposed HLTB ID, report both values and ask the user how to proceed.
+3. Find the correct position to maintain numerical order by AppID.
+4. Insert the new mapping:
 
 ```lua
 [{APPID}] = {HLTB_ID}, -- {HLTB game name}
 ```
 
-4. Report the mapping that was added.
+5. Report the mapping that was added.
+6. Run verification:
+
+```powershell
+busted.bat tests/game_ids_spec.lua
+npm run build
+```
+
+If `busted.bat` is unavailable, try:
+
+```powershell
+busted tests/game_ids_spec.lua
+```
+
+If neither Lua test command is available, stop and report the missing dependency. Point the user to `docs/development.md` section "Running Lua Tests".
 
 Use `apply_patch` for edits.
 

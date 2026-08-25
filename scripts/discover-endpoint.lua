@@ -1,6 +1,6 @@
 --[[
     Run the plugin's endpoint discovery against HLTB and print the resulting
-    endpoint name (e.g. "bleed") to stdout. Exits non-zero on failure.
+    API path (e.g. "search/site") to stdout. Exits non-zero on failure.
 
     Used by .github/workflows/hltb-api-monitor.yml so the CI monitor uses the
     same discovery logic as the plugin at runtime, eliminating drift between
@@ -74,10 +74,10 @@ if not search_url then
     os.exit(1)
 end
 
-local name = search_url:match("/api/([a-zA-Z0-9_]+)$")
-if not name then
-    io.stderr:write("Could not extract endpoint name from: " .. search_url .. "\n")
+local api_path = search_url:match("/api/([a-zA-Z0-9_/%-]+)$")
+if not api_path then
+    io.stderr:write("Could not extract API path from: " .. search_url .. "\n")
     os.exit(1)
 end
 
-io.write(name)
+io.write(api_path)

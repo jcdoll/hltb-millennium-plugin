@@ -23,20 +23,20 @@ jobs:
       - name: Install Lua
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
 
-      - name: Discover search endpoint via plugin discovery module
+      - name: Discover search API path via plugin discovery module
         id: discover
         run: |
           set -euo pipefail
-          ENDPOINT=$(lua5.4 scripts/discover-endpoint.lua)
-          echo "Discovered endpoint: /api/$ENDPOINT"
-          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
+          API_PATH=$(lua5.4 scripts/discover-endpoint.lua)
+          echo "Discovered endpoint: /api/$API_PATH"
+          echo "api_path=$API_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Hit init endpoint and capture token
         id: init
         run: |
           set -euo pipefail
-          ENDPOINT="${{ steps.discover.outputs.endpoint }}"
-          INIT_URL="$BASE_URL/api/$ENDPOINT/init?t=$(date +%s%3N)"
+          API_PATH="${{ steps.discover.outputs.api_path }}"
+          INIT_URL="$BASE_URL/api/$API_PATH/init?t=$(date +%s%3N)"
 
           RESPONSE=$(curl -sS -w "\n%{http_code}" \
             -H "User-Agent: $USER_AGENT" \
@@ -48,7 +48,7 @@ jobs:
 
           echo "Init HTTP $HTTP_CODE"
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::/api/$ENDPOINT/init returned HTTP $HTTP_CODE"
+            echo "::error::/api/$API_PATH/init returned HTTP $HTTP_CODE"
             exit 1
           fi
 
@@ -72,7 +72,7 @@ jobs:
       - name: Hit search endpoint and validate result has completion times
         run: |
           set -euo pipefail
-          ENDPOINT="${{ steps.discover.outputs.endpoint }}"
+          API_PATH="${{ steps.discover.outputs.api_path }}"
           TOKEN="${{ steps.init.outputs.token }}"
           HP_KEY="${{ steps.init.outputs.hp_key }}"
           HP_VAL="${{ steps.init.outputs.hp_val }}"
@@ -114,7 +114,7 @@ jobs:
             -H "x-auth-token: $TOKEN" \
             -H "x-hp-key: $HP_KEY" \
             -H "x-hp-val: $HP_VAL" \
-            "$BASE_URL/api/$ENDPOINT" \
+            "$BASE_URL/api/$API_PATH" \
             -d "$PAYLOAD")
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
@@ -122,7 +122,7 @@ jobs:
 
           echo "Search HTTP $HTTP_CODE"
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::/api/$ENDPOINT returned HTTP $HTTP_CODE"
+            echo "::error::/api/$API_PATH returned HTTP $HTTP_CODE"
             exit 1
           fi
 
@@ -146,4 +146,4 @@ jobs:
             exit 1
           fi
 
-          echo "Search check passed against /api/$ENDPOINT"
+          echo "Search check passed against /api/$API_PATH"

@@ -3,6 +3,6 @@
   "name": "hltb-for-millennium",
   "common_name": "HLTB for Steam",
   "description": "Displays How Long To Beat completion times on game pages",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "backendType": "lua"
 }

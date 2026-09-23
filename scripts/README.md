@@ -1,6 +1,23 @@
 # Developer Scripts
 
-Scripts for maintaining `game_ids.lua`.
+Scripts for maintaining `game_ids.lua` and checking the HLTB API.
+
+## check-hltb-api.lua
+
+Runs the plugin's real endpoint discovery, authentication, search, response validation,
+and retries against HLTB. Used by the scheduled API monitor. Auth key/value fields
+remain optional because the backend owns request construction.
+
+Requires a POSIX shell, curl, Lua, and dkjson (on Ubuntu: `sudo apt-get install lua5.4 lua-dkjson`).
+Run from the repository root:
+
+```bash
+lua5.4 scripts/check-hltb-api.lua
+```
+
+The check requires Dark Souls (HLTB ID 2224) in the results with at least one positive
+completion time. Missing categories are allowed; nonnumeric times fail the check.
+Failures exit nonzero and include the backend's diagnostic logs.
 
 ## discover-game-ids.js
 

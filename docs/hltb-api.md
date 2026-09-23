@@ -13,11 +13,19 @@ Our Lua implementation in `backend/hltb.lua` follows these references.
 
 ### Search Endpoint
 
-The search URL is dynamically extracted from HLTB's JavaScript bundles. Fallback: `https://howlongtobeat.com/api/finder`
+The search URL is discovered from HLTB's NextJS build manifest, with JavaScript
+chunks used as a fallback. Paths can contain multiple segments, such as
+`/api/search/site`. There is no hardcoded endpoint fallback.
 
 ### Authentication
 
-Requests require a token from the init endpoint, derived from the search URL (e.g., `/api/finder/init`). Cached for 5 minutes.
+Requests require a token from the init endpoint, derived from the search URL
+(e.g., `/api/search/site/init`). Auth is cached for 5 minutes. The `hpKey` and
+`hpVal` response fields are optional; the client includes them in request headers
+when supplied and adds the payload field only when both are present.
+
+The scheduled API monitor uses this same Lua client for discovery, authentication,
+search, and retries, then checks completion times for Dark Souls (HLTB ID 2224).
 
 ### Search Results
 

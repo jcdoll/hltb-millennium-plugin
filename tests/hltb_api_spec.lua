@@ -1,7 +1,7 @@
 --[[
     HLTB API Unit Tests
 
-    Tests for Steam import and direct game fetch functionality.
+    Tests for search authentication, Steam import, and direct game fetching.
     Uses mock HTTP module to test without network calls.
 
     Run with: busted tests/hltb_api_spec.lua
@@ -78,6 +78,59 @@ describe("hltb_api", function()
     before_each(function()
         package.loaded["hltb_api"] = nil
         api = require("hltb_api")
+    end)
+
+    describe("search authentication", function()
+        local function search_with_auth(auth)
+            local sent
+            api._http = {
+                get = function()
+                    return { status = 200, body = json.encode(auth) }
+                end,
+                request = function(_, opts)
+                    sent = opts
+                    return { status = 200, body = json.encode({ data = {
+                        { game_id = 2224, game_name = "Dark Souls", comp_all_count = 100 }
+                    } }) }
+                end,
+            }
+            local result = api.search("Dark Souls")
+            return result, sent
+        end
+
+        it("searches with only a token and omits optional auth fields", function()
+            local result, sent = search_with_auth({ token = "test-token" })
+            assert.is_not_nil(result)
+            assert.equals("test-token", sent.headers["x-auth-token"])
+            assert.is_nil(sent.headers["x-hp-key"])
+            assert.is_nil(sent.headers["x-hp-val"])
+            local payload = json.decode(sent.data)
+            assert.is_nil(payload[""])
+            assert.same({ "Dark", "Souls" }, payload.searchTerms)
+            assert.equals(api.SEARCH_SIZE, payload.size)
+        end)
+
+        it("includes supplied auth fields and preserves the payload value type", function()
+            local result, sent = search_with_auth({ token = "test-token", hpKey = "challenge", hpVal = 42 })
+            assert.is_not_nil(result)
+            assert.equals("challenge", sent.headers["x-hp-key"])
+            assert.equals("42", sent.headers["x-hp-val"])
+            assert.equals(42, json.decode(sent.data).challenge)
+        end)
+
+        it("accepts a partial optional pair without adding an incomplete payload field", function()
+            local result, sent = search_with_auth({ token = "test-token", hpKey = "challenge" })
+            assert.is_not_nil(result)
+            assert.equals("challenge", sent.headers["x-hp-key"])
+            assert.is_nil(sent.headers["x-hp-val"])
+            assert.is_nil(json.decode(sent.data).challenge)
+        end)
+
+        it("does not search when the required token is missing", function()
+            local result, sent = search_with_auth({ hpKey = "challenge", hpVal = "value" })
+            assert.is_nil(result)
+            assert.is_nil(sent)
+        end)
     end)
 
     describe("fetch_steam_import", function()

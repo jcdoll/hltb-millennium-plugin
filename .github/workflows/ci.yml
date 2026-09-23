@@ -21,6 +21,7 @@ jobs:
           filters: |
             lua:
               - 'backend/**/*.lua'
+              - 'scripts/**/*.lua'
               - 'tests/**/*.lua'
 
   typecheck:

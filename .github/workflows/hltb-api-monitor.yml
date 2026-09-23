@@ -1,11 +1,7 @@
 name: HLTB API Monitor
 
-# Catches HLTB endpoint rotations early. Discovery is delegated to the plugin's
-# actual Lua module (backend/hltb_endpoint_discovery.lua) via
-# scripts/discover-endpoint.lua, so the monitor and the plugin share one source
-# of truth for which endpoint is current. Init/search are exercised in bash
-# against whatever endpoint the Lua module finds.
-
+# Exercise the plugin's discovery, authentication, search, and retry logic.
+# Keep request construction in the backend so optional API fields cannot drift.
 on:
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours
@@ -14,136 +10,12 @@ on:
 jobs:
   check-api:
     runs-on: ubuntu-latest
-    env:
-      USER_AGENT: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      BASE_URL: 'https://howlongtobeat.com'
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Lua
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+      - name: Install Lua and JSON decoder
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4 lua-dkjson
 
-      - name: Discover search API path via plugin discovery module
-        id: discover
-        run: |
-          set -euo pipefail
-          API_PATH=$(lua5.4 scripts/discover-endpoint.lua)
-          echo "Discovered endpoint: /api/$API_PATH"
-          echo "api_path=$API_PATH" >> "$GITHUB_OUTPUT"
-
-      - name: Hit init endpoint and capture token
-        id: init
-        run: |
-          set -euo pipefail
-          API_PATH="${{ steps.discover.outputs.api_path }}"
-          INIT_URL="$BASE_URL/api/$API_PATH/init?t=$(date +%s%3N)"
-
-          RESPONSE=$(curl -sS -w "\n%{http_code}" \
-            -H "User-Agent: $USER_AGENT" \
-            -H "Referer: $BASE_URL/" \
-            "$INIT_URL")
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          echo "Init HTTP $HTTP_CODE"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::/api/$API_PATH/init returned HTTP $HTTP_CODE"
-            exit 1
-          fi
-
-          TOKEN=$(echo "$BODY" | jq -r '.token // empty')
-          HP_KEY=$(echo "$BODY" | jq -r '.hpKey // empty')
-          HP_VAL=$(echo "$BODY" | jq -r '.hpVal // empty')
-
-          echo "Token length: ${#TOKEN}"
-          echo "hpKey: $HP_KEY"
-          echo "hpVal: $HP_VAL"
-
-          if [ -z "$TOKEN" ] || [ -z "$HP_KEY" ] || [ -z "$HP_VAL" ]; then
-            echo "::error::Init response missing expected fields. Body: $BODY"
-            exit 1
-          fi
-
-          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
-          echo "hp_key=$HP_KEY" >> "$GITHUB_OUTPUT"
-          echo "hp_val=$HP_VAL" >> "$GITHUB_OUTPUT"
-
-      - name: Hit search endpoint and validate result has completion times
-        run: |
-          set -euo pipefail
-          API_PATH="${{ steps.discover.outputs.api_path }}"
-          TOKEN="${{ steps.init.outputs.token }}"
-          HP_KEY="${{ steps.init.outputs.hp_key }}"
-          HP_VAL="${{ steps.init.outputs.hp_val }}"
-
-          PAYLOAD=$(jq -n \
-            --arg key "$HP_KEY" \
-            --arg val "$HP_VAL" \
-            '{
-              searchType: "games",
-              searchTerms: ["Dark", "Souls"],
-              searchPage: 1,
-              size: 5,
-              searchOptions: {
-                games: {
-                  userId: 0,
-                  platform: "",
-                  sortCategory: "popular",
-                  rangeCategory: "main",
-                  rangeTime: { min: 0, max: 0 },
-                  gameplay: { perspective: "", flow: "", genre: "", difficulty: "" },
-                  rangeYear: { max: "", min: "" },
-                  modifier: ""
-                },
-                users: { sortCategory: "postcount" },
-                lists: { sortCategory: "follows" },
-                filter: "",
-                sort: 0,
-                randomizer: 0
-              },
-              useCache: true
-            } + { ($key): $val }')
-
-          RESPONSE=$(curl -sS -w "\n%{http_code}" \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "User-Agent: $USER_AGENT" \
-            -H "Origin: $BASE_URL" \
-            -H "Referer: $BASE_URL/" \
-            -H "x-auth-token: $TOKEN" \
-            -H "x-hp-key: $HP_KEY" \
-            -H "x-hp-val: $HP_VAL" \
-            "$BASE_URL/api/$API_PATH" \
-            -d "$PAYLOAD")
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          echo "Search HTTP $HTTP_CODE"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::/api/$API_PATH returned HTTP $HTTP_CODE"
-            exit 1
-          fi
-
-          RESULT_COUNT=$(echo "$BODY" | jq -r '.data | length // 0')
-          echo "Result count: $RESULT_COUNT"
-          if [ "$RESULT_COUNT" -lt 1 ]; then
-            echo "::error::Search returned no results for 'Dark Souls'"
-            exit 1
-          fi
-
-          # Catch silent degradation: a 200 with results but zero completion
-          # times means HLTB changed their schema and we'd cache empty data.
-          COMP_MAIN=$(echo "$BODY" | jq -r '.data[0].comp_main // 0')
-          COMP_PLUS=$(echo "$BODY" | jq -r '.data[0].comp_plus // 0')
-          COMP_100=$(echo "$BODY" | jq -r '.data[0].comp_100 // 0')
-          GAME_NAME=$(echo "$BODY" | jq -r '.data[0].game_name // "?"')
-          echo "Top result: $GAME_NAME  main=$COMP_MAIN plus=$COMP_PLUS 100=$COMP_100"
-
-          if [ "$COMP_MAIN" -le 0 ] && [ "$COMP_PLUS" -le 0 ] && [ "$COMP_100" -le 0 ]; then
-            echo "::error::Top result has no completion times -- schema may have changed"
-            exit 1
-          fi
-
-          echo "Search check passed against /api/$API_PATH"
+      - name: Search via plugin client and validate completion times
+        run: lua5.4 scripts/check-hltb-api.lua

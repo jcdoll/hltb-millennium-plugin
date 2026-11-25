@@ -91,25 +91,48 @@ function insertAtPosition(element: HTMLElement, position: string): boolean {
   return true;
 }
 
-export async function initStorePage(appId: number): Promise<void> {
-  let storePosition = 'achievements';
-  let showViewDetails = true;
+interface StoreSettings {
+  showInStore: boolean;
+  storePosition: string;
+  showStoreViewDetails: boolean;
+}
 
-  // Check settings
+async function readStoreSettings(): Promise<StoreSettings | undefined> {
   try {
     const settingsJson = await GetSettingsRpc();
-    if (settingsJson) {
-      const result = JSON.parse(settingsJson);
-      if (result.success && result.data) {
-        if (!result.data.showInStore) return;
-        if (result.data.storePosition) storePosition = result.data.storePosition;
-        if (result.data.showStoreViewDetails === false) showViewDetails = false;
-      }
-    }
+    if (!settingsJson) return;
+    const result = JSON.parse(settingsJson);
+    if (result.success) return result.data;
   } catch {
-    // If settings fetch fails, proceed with defaults
+    return undefined;
   }
+}
 
+// Steam can restore this document from history after closing Millennium settings.
+function checkPositionOnReturn(displayedPosition: string): void {
+  let checking = false;
+  const check = async () => {
+    if (document.hidden || checking) return;
+    checking = true;
+    const saved = await readStoreSettings();
+    if (!document.hidden && saved?.storePosition && saved.storePosition !== displayedPosition) {
+      window.location.reload();
+      return;
+    }
+    checking = false;
+  };
+  document.addEventListener('visibilitychange', check);
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) void check();
+  });
+}
+
+export async function initStorePage(appId: number): Promise<void> {
+  const settings = await readStoreSettings();
+  const storePosition = settings?.storePosition || 'achievements';
+  checkPositionOnReturn(storePosition);
+  if (settings && !settings.showInStore) return;
+  const showViewDetails = settings?.showStoreViewDetails !== false;
   injectStyles();
 
   // Wait for the sidebar to appear

@@ -18,6 +18,7 @@ let currentUIMode: UIMode | undefined;
 let initializedForUserId: string | null = null;
 
 const STORE_POSITION_OPTIONS = [
+  { value: 'hero', label: 'Top of page' },
   { value: 'top', label: 'Sidebar start' },
   { value: 'achievements', label: 'Achievements' },
   { value: 'details', label: 'Game details' },
@@ -49,7 +50,7 @@ const SettingsContent = () => {
   const [showViewDetails, setShowViewDetails] = useState(true);
   const [alignRight, setAlignRight] = useState(true);
   const [alignBottom, setAlignBottom] = useState(true);
-  const [storePosition, setStorePosition] = useState('achievements');
+  const [storePosition, setStorePosition] = useState('hero');
   const [showStoreViewDetails, setShowStoreViewDetails] = useState(true);
 
   useEffect(() => {

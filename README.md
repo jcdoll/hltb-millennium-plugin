@@ -63,7 +63,7 @@ Library view:
 
 Store view:
 - Show in Store (default = true): Show or hide HLTB data on store pages
-- Position (default = Achievements): Where to insert the HLTB box in the store sidebar
+- Position (default = Top of page): Where to insert the HLTB box on store pages. The header placement sits under the release date / developer / publisher row; the older sidebar placements are still available
 - Show View Details Link (default = true): Toggle the link to the HLTB game page
 
 Cache:

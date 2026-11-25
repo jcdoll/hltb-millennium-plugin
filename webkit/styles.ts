@@ -51,6 +51,62 @@ const STORE_STYLES = `
   color: #8f98a0;
   font-size: 12px;
 }
+
+/* Header placement. The lane carries the position and the width so that the
+   card keeps its own chrome, including the one themes give it. */
+#hltb-store-hero-lane {
+  box-sizing: border-box;
+  display: flex;
+  justify-content: flex-start;
+  max-width: 1316px;
+  width: calc(100% - 32px);
+  margin: 12px auto 2px;
+  /* themes draw the header with an absolutely positioned media stage; a
+     positioned lane keeps the card above it instead of behind the artwork */
+  position: relative;
+  z-index: 2;
+}
+
+#hltb-store-data.hltb-store-hero {
+  display: inline-flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: 11px 16px 12px;
+  background: rgba(10, 14, 18, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+#hltb-store-data.hltb-store-hero .hltb-store-title {
+  margin: 0 0 9px 0;
+  letter-spacing: 1.2px;
+}
+
+#hltb-store-data.hltb-store-hero .hltb-store-rows {
+  flex-direction: row;
+  gap: 34px;
+}
+
+#hltb-store-data.hltb-store-hero .hltb-store-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+#hltb-store-data.hltb-store-hero .hltb-store-row span {
+  color: #ffffff;
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+#hltb-store-data.hltb-store-hero .hltb-store-link {
+  margin-top: 9px;
+}
 `;
 
 const STYLE_ID = 'hltb-store-styles';

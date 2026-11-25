@@ -1,7 +1,7 @@
 import { callable } from '@steambrew/client';
 import { log, logError } from './logger';
 
-export type StorePosition = 'top' | 'achievements' | 'details' | 'bottom';
+export type StorePosition = 'hero' | 'top' | 'achievements' | 'details' | 'bottom';
 
 export interface PluginSettings {
   showInLibrary: boolean;
@@ -29,7 +29,7 @@ const DEFAULT_SETTINGS: PluginSettings = {
   alignBottom: true,
   horizontalOffset: 0,
   verticalOffset: 0,
-  storePosition: 'achievements' as StorePosition,
+  storePosition: 'hero' as StorePosition,
   showStoreViewDetails: true,
 };
 

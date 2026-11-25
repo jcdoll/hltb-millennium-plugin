@@ -83,12 +83,49 @@ The store page right sidebar (`div.rightcol.game_meta_data`) contains these elem
 | Achievements | `#achievement_block` | Not present for games without achievements |
 | Game details + links | `#appDetailsUnderlinedLinks` | Title, genre, developer, publisher, release date, external links |
 
-The plugin supports four configurable insertion positions:
+### Where the card goes
+
+The card is inserted in the game header by default, next to the information it
+belongs to. This is not cosmetic: on the pages Steam currently serves, the right
+column starts below the header, so a card anchored to a sidebar module is
+outside the first screen.
+
+Measured in the client on a 1280x1310 window (Aika theme, `Store: Cinematic`,
+app 1030300):
+
+| Anchor | Vertical position |
+|--------|-------------------|
+| Header meta row (release date / developer / publisher / tags) | ~1300 px |
+| Right column start (`div.rightcol.game_meta_data`) | ~1840 px |
+| `#achievement_block` on these pages (points shop items) | ~3590 px |
+| Card inserted after `#achievement_block` (previous default) | ~3620 px |
+
+Header anchors, in order of preference:
+
+| Selector | Used by |
+|----------|---------|
+| `.aika-cine-facts` | Aika theme, "Cinematic" store header |
+| `#game_highlights .glance_ctn` | Default client, header meta column |
+| `#game_highlights .game_header_image_ctn` | Default client, header container |
+
+If none of them is visible once the data is ready, the card falls back to the
+top of the sidebar, then to the bottom of it. Placement is retried every 500 ms
+for a minute, because the page keeps re-rendering while it hydrates: the card
+comes back if a re-render drops it, and moves up as soon as a header anchor
+appears.
+
+The card itself is wrapped in a lane element (`#hltb-store-hero-lane`) that
+carries the position and the width. Themes style `#hltb-store-data` directly
+(Aika paints it as a card), so the card keeps its own chrome no matter where the
+lane puts it.
+
+Five configurable insertion positions remain:
 
 | Position | Behavior | Fallback |
 |----------|----------|----------|
+| `hero` (default) | After the game header anchor | Top of sidebar, then bottom |
 | `top` | First child of sidebar | N/A (sidebar always exists) |
-| `achievements` (default) | After `#achievement_block` | Bottom of sidebar |
+| `achievements` | After `#achievement_block` | Bottom of sidebar |
 | `details` | After `#appDetailsUnderlinedLinks` | Bottom of sidebar |
 | `bottom` | Last child of sidebar | N/A |
 
@@ -172,12 +209,12 @@ Reference: https://github.com/BlythT/Gratitude-Millennium-Plugin
   "alignBottom": true,
   "horizontalOffset": 0,
   "verticalOffset": 0,
-  "storePosition": "achievements",
+  "storePosition": "hero",
   "showStoreViewDetails": true
 }
 ```
 
-Valid values for `storePosition`: `"top"`, `"achievements"`, `"details"`, `"bottom"`.
+Valid values for `storePosition`: `"hero"`, `"top"`, `"achievements"`, `"details"`, `"bottom"`.
 
 `showViewDetails` controls the library link, `showStoreViewDetails` controls the store link. They are independent.
 

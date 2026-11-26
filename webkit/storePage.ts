@@ -30,7 +30,12 @@ function createLoadingDisplay(): HTMLElement {
   return container;
 }
 
-function displayData(container: HTMLElement, data: HltbGameResult, showViewDetails: boolean, compact: boolean) {
+function displayData(
+  container: HTMLElement,
+  data: HltbGameResult,
+  showViewDetails: boolean,
+  compact: boolean
+): void {
   const stats = [
     { label: 'Main Story', value: data.comp_main },
     { label: 'Main + Extras', value: data.comp_plus },
@@ -46,7 +51,7 @@ function displayData(container: HTMLElement, data: HltbGameResult, showViewDetai
     const href = data.game_id
       ? `https://howlongtobeat.com/game/${data.game_id}`
       : `https://howlongtobeat.com/?q=${encodeURIComponent(data.searched_name)}`;
-    const label = compact ? 'How Long To Beat ↗' : (data.game_id ? 'View Details' : 'Search HLTB');
+    const label = compact ? 'How Long To Beat ↗' : data.game_id ? 'View Details' : 'Search HLTB';
     linkHtml = `<a class="hltb-store-link" href="${href}" target="_blank">${label}</a>`;
   }
 
@@ -71,7 +76,10 @@ const STORE_CONTAINER_SELECTORS = PRODUCT_SELECTOR + ', ' + SIDEBAR_SELECTOR;
 function visible(element: HTMLElement | null): boolean {
   if (!element) return false;
   const box = element.getBoundingClientRect();
-  return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden';
+  if (box.width === 0 || box.height === 0) return false;
+  return element.checkVisibility
+    ? element.checkVisibility()
+    : getComputedStyle(element).visibility !== 'hidden';
 }
 
 // Themes can move Steam's breadcrumbs out of the title area, or hide them on
@@ -110,29 +118,45 @@ function mountInHeader(root: Element, card: HTMLElement): boolean {
   return true;
 }
 
+// How long the page may stay quiet before the subtree observer is dropped. The
+// store mutates a lot while it hydrates and almost not at all afterwards.
+const SETTLE_MS = 30000;
+
 function watchPlacement(root: Element, card: HTMLElement, position: StorePosition): () => void {
+  let lastMove = Date.now();
+
   function place() {
-    if (position === 'hero' && mountInHeader(root, card)) return;
+    const previousParent = card.parentElement;
+
+    if (position === 'hero' && mountInHeader(root, card)) {
+      if (card.parentElement !== previousParent) lastMove = Date.now();
+      return;
+    }
+
     if (card.isConnected && !card.hasAttribute('data-hltb-header')) return;
+
     card.removeAttribute('data-hltb-header');
     const sidebar = root.matches(SIDEBAR_SELECTOR) ? root : root.querySelector(SIDEBAR_SELECTOR);
     if (!sidebar) {
       card.remove();
       return;
     }
+
     if (position === 'hero' || position === 'top') {
       sidebar.prepend(card);
-      return;
+    } else {
+      const selector = POSITION_SELECTORS[position];
+      const target = selector && sidebar.querySelector(selector);
+      if (target) target.after(card);
+      else sidebar.append(card);
     }
-    const selector = POSITION_SELECTORS[position];
-    const target = selector && sidebar.querySelector(selector);
-    if (target) target.after(card);
-    else sidebar.append(card);
+
+    if (card.parentElement !== previousParent) lastMove = Date.now();
   }
 
   let frame = 0;
   function schedule() {
-    if (frame) return;
+    if (document.hidden || frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
       place();
@@ -140,17 +164,37 @@ function watchPlacement(root: Element, card: HTMLElement, position: StorePositio
   }
 
   place();
-  const observer = new MutationObserver(schedule);
-  observer.observe(root, { childList: true, subtree: true });
-  if (position === 'hero') {
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    window.addEventListener('resize', schedule);
-  }
-  return () => {
-    observer.disconnect();
+
+  // Cheap, permanent watchers: theme switches, viewport changes, and a page that
+  // hydrated while it was hidden.
+  const layoutObserver = new MutationObserver(schedule);
+  layoutObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  const onVisibility = () => {
+    if (!document.hidden) schedule();
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('resize', schedule);
+
+  // Expensive watcher: only until the page settles.
+  const pageObserver = new MutationObserver(schedule);
+  pageObserver.observe(root, { childList: true, subtree: true });
+  const settleTimer = setInterval(() => {
+    if (Date.now() - lastMove < SETTLE_MS) return;
+    pageObserver.disconnect();
+    clearInterval(settleTimer);
+  }, 5000);
+
+  const stop = () => {
+    pageObserver.disconnect();
+    layoutObserver.disconnect();
+    clearInterval(settleTimer);
+    document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('resize', schedule);
     cancelAnimationFrame(frame);
   };
+
+  window.addEventListener('pagehide', stop, { once: true });
+  return stop;
 }
 
 function waitForStoreContainer(timeoutMs: number): Promise<Element | null> {

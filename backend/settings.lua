@@ -12,7 +12,7 @@ M.DEFAULTS = {
     alignBottom = true,
     horizontalOffset = 0,
     verticalOffset = 0,
-    storePosition = "achievements",
+    storePosition = "hero",
     showStoreViewDetails = true,
 }
 

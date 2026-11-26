@@ -83,12 +83,20 @@ The store page right sidebar (`div.rightcol.game_meta_data`) contains these elem
 | Achievements | `#achievement_block` | Not present for games without achievements |
 | Game details + links | `#appDetailsUnderlinedLinks` | Title, genre, developer, publisher, release date, external links |
 
-The plugin supports four configurable insertion positions:
+### Where the card goes
+
+The default **Top of page** position puts a compact card at the upper right.
+It shares the game title row when Steam's breadcrumbs are visible there. If a
+theme moves the breadcrumbs, the card follows them. When the breadcrumbs are
+hidden, it uses the game artwork or the visible parent of the moved breadcrumbs.
+If no header is available, it starts at the top of the sidebar. The plugin
+checks placement again as the page changes or the window resizes.
 
 | Position | Behavior | Fallback |
 |----------|----------|----------|
+| `hero` (default) | Upper right of the game header | Top of sidebar |
 | `top` | First child of sidebar | N/A (sidebar always exists) |
-| `achievements` (default) | After `#achievement_block` | Bottom of sidebar |
+| `achievements` | After `#achievement_block` | Bottom of sidebar |
 | `details` | After `#appDetailsUnderlinedLinks` | Bottom of sidebar |
 | `bottom` | Last child of sidebar | N/A |
 
@@ -172,12 +180,12 @@ Reference: https://github.com/BlythT/Gratitude-Millennium-Plugin
   "alignBottom": true,
   "horizontalOffset": 0,
   "verticalOffset": 0,
-  "storePosition": "achievements",
+  "storePosition": "hero",
   "showStoreViewDetails": true
 }
 ```
 
-Valid values for `storePosition`: `"top"`, `"achievements"`, `"details"`, `"bottom"`.
+Valid values for `storePosition`: `"hero"`, `"top"`, `"achievements"`, `"details"`, `"bottom"`.
 
 `showViewDetails` controls the library link, `showStoreViewDetails` controls the store link. They are independent.
 

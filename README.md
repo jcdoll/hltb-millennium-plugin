@@ -63,7 +63,7 @@ Library view:
 
 Store view:
 - Show in Store (default = true): Show or hide HLTB data on store pages
-- Position (default = Achievements): Where to insert the HLTB box in the store sidebar
+- Position (default = Top of page): Where to insert the HLTB box on store pages. Top of page shows a compact card at the upper right of the game header. The four sidebar positions are also available
 - Show View Details Link (default = true): Toggle the link to the HLTB game page
 
 Cache:

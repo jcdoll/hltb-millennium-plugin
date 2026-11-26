@@ -64,7 +64,7 @@ describe("settings", function()
             assert.equals(true, result.alignBottom)
             assert.equals(0, result.horizontalOffset)
             assert.equals(0, result.verticalOffset)
-            assert.equals("achievements", result.storePosition)
+            assert.equals("hero", result.storePosition)
             assert.equals(true, result.showStoreViewDetails)
         end)
 

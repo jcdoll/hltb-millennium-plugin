@@ -122,7 +122,7 @@ function mountInHeader(root: Element, card: HTMLElement): boolean {
 // store mutates a lot while it hydrates and almost not at all afterwards.
 const SETTLE_MS = 30000;
 
-function watchPlacement(root: Element, card: HTMLElement, position: StorePosition): () => void {
+function watchVisiblePlacement(root: Element, card: HTMLElement, position: StorePosition): () => void {
   let lastMove = Date.now();
 
   function place() {
@@ -165,14 +165,9 @@ function watchPlacement(root: Element, card: HTMLElement, position: StorePositio
 
   place();
 
-  // Cheap, permanent watchers: theme switches, viewport changes, and a page that
-  // hydrated while it was hidden.
+  // Keep following theme and viewport changes after the page settles.
   const layoutObserver = new MutationObserver(schedule);
   layoutObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  const onVisibility = () => {
-    if (!document.hidden) schedule();
-  };
-  document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('resize', schedule);
 
   // Expensive watcher: only until the page settles.
@@ -184,17 +179,40 @@ function watchPlacement(root: Element, card: HTMLElement, position: StorePositio
     clearInterval(settleTimer);
   }, 5000);
 
-  const stop = () => {
+  return () => {
     pageObserver.disconnect();
     layoutObserver.disconnect();
     clearInterval(settleTimer);
-    document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('resize', schedule);
     cancelAnimationFrame(frame);
   };
+}
 
-  window.addEventListener('pagehide', stop, { once: true });
-  return stop;
+function watchPlacement(root: Element, card: HTMLElement, position: StorePosition): () => void {
+  let stopWatching: (() => void) | undefined;
+
+  function pause() {
+    stopWatching?.();
+    stopWatching = undefined;
+  }
+
+  function syncVisibility() {
+    if (document.hidden) pause();
+    else if (!stopWatching) stopWatching = watchVisiblePlacement(root, card, position);
+  }
+
+  // Back can restore this document without running initStorePage again.
+  document.addEventListener('visibilitychange', syncVisibility);
+  window.addEventListener('pagehide', pause);
+  window.addEventListener('pageshow', syncVisibility);
+  syncVisibility();
+
+  return () => {
+    pause();
+    document.removeEventListener('visibilitychange', syncVisibility);
+    window.removeEventListener('pagehide', pause);
+    window.removeEventListener('pageshow', syncVisibility);
+  };
 }
 
 function waitForStoreContainer(timeoutMs: number): Promise<Element | null> {

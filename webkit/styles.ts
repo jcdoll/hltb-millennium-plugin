@@ -96,8 +96,8 @@ const STORE_STYLES = `
   margin: 0;
   margin-inline-start: auto;
   padding: 7px 12px 8px;
-  background: #19232d;
-  border: 1px solid #ffffff26;
+  background: var(--hltb-store-card-bg, #19232d);
+  border: 1px solid var(--hltb-store-card-border, #ffffff26);
   border-radius: 5px;
   box-shadow: none;
   text-align: left;
@@ -110,7 +110,7 @@ const STORE_STYLES = `
   display: block;
   margin: 0;
   padding: 0;
-  color: #b7c9d9;
+  color: var(--hltb-store-card-muted, #b7c9d9);
   font-family: inherit;
   font-weight: 600;
   font-size: 10px;
@@ -120,7 +120,7 @@ const STORE_STYLES = `
   text-decoration: none;
 }
 
-#hltb-store-data[data-hltb-header] .hltb-store-title a:hover { color: white; }
+#hltb-store-data[data-hltb-header] .hltb-store-title a:hover { color: var(--hltb-store-card-fg, white); }
 
 #hltb-store-data[data-hltb-header] .hltb-store-rows {
   display: grid;
@@ -134,14 +134,14 @@ const STORE_STYLES = `
   flex-direction: column;
   align-items: flex-start;
   white-space: nowrap;
-  color: #b0bdc7;
+  color: var(--hltb-store-card-muted, #b0bdc7);
   font-size: 10px;
   line-height: 13px;
   gap: 0;
 }
 
 #hltb-store-data[data-hltb-header] .hltb-store-row span {
-  color: #edf3f7;
+  color: var(--hltb-store-card-fg, #edf3f7);
   font-size: 15px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;

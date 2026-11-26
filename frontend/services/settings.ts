@@ -36,16 +36,20 @@ const DEFAULT_SETTINGS: PluginSettings = {
 const GetSettingsRpc = callable<[], string>('GetSettings');
 const SaveSettingsRpc = callable<[{ settings_json: string }], string>('SaveSettings');
 
-let cachedSettings: PluginSettings = { ...DEFAULT_SETTINGS };
+let savedSettings: PluginSettings = { ...DEFAULT_SETTINGS };
+let cachedSettings = savedSettings;
+let pendingSave = Promise.resolve(true);
 
 export async function initSettings(): Promise<void> {
+  const previous = savedSettings;
   try {
     const resultJson = await GetSettingsRpc();
     if (!resultJson) return;
 
     const result: SettingsResponse = JSON.parse(resultJson);
-    if (result.success && result.data) {
-      cachedSettings = { ...DEFAULT_SETTINGS, ...result.data };
+    if (result.success && result.data && savedSettings === previous) {
+      savedSettings = { ...DEFAULT_SETTINGS, ...result.data };
+      if (cachedSettings === previous) cachedSettings = savedSettings;
       log('Settings loaded from backend');
     }
   } catch (e) {
@@ -57,21 +61,25 @@ export function getSettings(): PluginSettings {
   return cachedSettings;
 }
 
-export async function saveSettings(settings: PluginSettings): Promise<void> {
-  const previous = cachedSettings;
+export function saveSettings(settings: PluginSettings): Promise<boolean> {
   cachedSettings = settings;
+  // Each RPC writes the entire settings file. Preserve the order of UI edits.
+  pendingSave = pendingSave.then(() => persistSettings(settings));
+  return pendingSave;
+}
 
+async function persistSettings(settings: PluginSettings): Promise<boolean> {
   try {
     const resultJson = await SaveSettingsRpc({ settings_json: JSON.stringify(settings) });
-    if (!resultJson) return;
-
-    const result = JSON.parse(resultJson);
-    if (!result.success) {
-      logError('Failed to save settings:', result.error);
-      cachedSettings = previous;
+    const result: SettingsResponse | null = resultJson ? JSON.parse(resultJson) : null;
+    if (result?.success) {
+      savedSettings = settings;
+      return true;
     }
+    logError('Failed to save settings:', result?.error ?? 'No confirmation from backend');
   } catch (e) {
     logError('Failed to save settings:', e);
-    cachedSettings = previous;
   }
+  if (cachedSettings === settings) cachedSettings = savedSettings;
+  return false;
 }

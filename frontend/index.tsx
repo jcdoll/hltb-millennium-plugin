@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { definePlugin, Millennium, IconsModule, Field, DialogButton, callable } from '@steambrew/client';
-import { log } from './services/logger';
+import { log, logError } from './services/logger';
 import type { UIMode } from './types';
 import type { StorePosition } from './services/settings';
 import { setupObserver, resetState, disconnectObserver, refreshDisplay } from './injection/observer';
@@ -26,6 +26,19 @@ const STORE_POSITION_OPTIONS = [
 
 const sectionHeaderStyle = { fontSize: '16px', fontWeight: 'bold' as const, textTransform: 'uppercase' as const, letterSpacing: '1px' };
 const sectionDescStyle = { fontSize: '11px', color: '#8f98a0', padding: '4px 0 8px', borderBottom: '1px solid rgba(255,255,255,0.1)' };
+
+function reloadOpenStoreGame(): void {
+  const { MainWindowBrowserManager: browser } = window as Window & {
+    MainWindowBrowserManager?: { DisplayURL: string; Reload?(): void };
+  };
+  if (browser && /^https:\/\/store\.steampowered\.com\/app\/\d+(?:[/?#]|$)/i.test(browser.DisplayURL)) {
+    try {
+      browser.Reload?.();
+    } catch (error) {
+      logError('Store position saved, but Steam could not reload the page:', error);
+    }
+  }
+}
 
 const SettingsContent = () => {
   const [message, setMessage] = useState('');
@@ -64,9 +77,14 @@ const SettingsContent = () => {
   };
 
   const onStorePositionChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
+    const value = e.target.value as StorePosition;
+    if (value === getSettings().storePosition) return;
     setStorePosition(value);
-    await saveSettings({ ...getSettings(), storePosition: value as StorePosition });
+    if (await saveSettings({ ...getSettings(), storePosition: value })) {
+      reloadOpenStoreGame();
+    } else {
+      setStorePosition(getSettings().storePosition);
+    }
   };
 
   const onShowStoreViewDetailsChange = async (checked: boolean) => {
@@ -213,7 +231,7 @@ const SettingsContent = () => {
 
       {/* Store View */}
       <div style={{ ...sectionHeaderStyle, paddingTop: '28px' }}>Store View</div>
-      <div style={sectionDescStyle}>Changes apply on next page load</div>
+      <div style={sectionDescStyle}>Changing position reloads the open Store game page. Other changes apply on the next page load.</div>
       <Field label="Show in Store" bottomSeparator="standard">
         <input
           type="checkbox"

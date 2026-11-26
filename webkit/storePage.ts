@@ -5,11 +5,8 @@ import { injectStyles } from './styles';
 const GetSettingsRpc = callable<[], string>('GetSettings');
 
 const CONTAINER_ID = 'hltb-store-data';
-const HERO_CLASS = 'hltb-store-hero';
-const HERO_LANE_ID = 'hltb-store-hero-lane';
 
 type StorePosition = 'hero' | 'top' | 'achievements' | 'details' | 'bottom';
-type Placement = 'hero' | 'sidebar' | 'none';
 
 const DEFAULT_POSITION: StorePosition = 'hero';
 
@@ -33,10 +30,7 @@ function createLoadingDisplay(): HTMLElement {
   return container;
 }
 
-function createDataDisplay(data: HltbGameResult, showViewDetails: boolean): HTMLElement {
-  const container = document.createElement('div');
-  container.id = CONTAINER_ID;
-
+function displayData(container: HTMLElement, data: HltbGameResult, showViewDetails: boolean, compact: boolean) {
   const stats = [
     { label: 'Main Story', value: data.comp_main },
     { label: 'Main + Extras', value: data.comp_plus },
@@ -49,21 +43,18 @@ function createDataDisplay(data: HltbGameResult, showViewDetails: boolean): HTML
 
   let linkHtml = '';
   if (showViewDetails) {
-    if (data.game_id) {
-      linkHtml = `<a class="hltb-store-link" href="https://howlongtobeat.com/game/${data.game_id}" target="_blank">View Details</a>`;
-    } else {
-      const query = encodeURIComponent(data.searched_name);
-      linkHtml = `<a class="hltb-store-link" href="https://howlongtobeat.com/?q=${query}" target="_blank">Search HLTB</a>`;
-    }
+    const href = data.game_id
+      ? `https://howlongtobeat.com/game/${data.game_id}`
+      : `https://howlongtobeat.com/?q=${encodeURIComponent(data.searched_name)}`;
+    const label = compact ? 'How Long To Beat ↗' : (data.game_id ? 'View Details' : 'Search HLTB');
+    linkHtml = `<a class="hltb-store-link" href="${href}" target="_blank">${label}</a>`;
   }
 
   container.innerHTML = `
-    <p class="hltb-store-title">How Long To Beat</p>
+    <p class="hltb-store-title">${compact && linkHtml ? linkHtml : 'How Long To Beat'}</p>
     <div class="hltb-store-rows">${rows}</div>
-    ${linkHtml}
+    ${compact ? '' : linkHtml}
   `;
-
-  return container;
 }
 
 const SIDEBAR_SELECTOR = 'div.rightcol.game_meta_data';
@@ -74,158 +65,92 @@ const POSITION_SELECTORS: Record<string, string> = {
   details: '#appDetailsUnderlinedLinks',
 };
 
-// Store pages render the game header - title, price, purchase actions, release
-// date, developer, publisher, tags - above a two-column body, while the legacy
-// right column starts below it. Measured in the client on a 1280x1310 window:
-// header meta at ~1300 px, right column at ~1840 px and the achievement module
-// (points shop items on these pages) at ~3590 px. A card inserted after that
-// module, which is what the `achievements` position does, is three screens
-// below the fold: it exists but is never seen. The header anchors below put the
-// card next to the information it belongs to.
-//
-// The card is wrapped in a lane element because themes style `#hltb-store-data`
-// itself (Aika paints it as a card). Position and width belong to the lane, so
-// the card keeps whatever chrome it is given.
-interface HeroTarget {
-  selector: string;
-  insert(anchor: HTMLElement, element: HTMLElement): void;
+const PRODUCT_SELECTOR = '.game_page_background .page_content_ctn';
+const STORE_CONTAINER_SELECTORS = PRODUCT_SELECTOR + ', ' + SIDEBAR_SELECTOR;
+
+function visible(element: HTMLElement | null): boolean {
+  if (!element) return false;
+  const box = element.getBoundingClientRect();
+  return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden';
 }
 
-const HERO_TARGETS: HeroTarget[] = [
-  {
-    // Aika theme, "Cinematic" store header: the card goes under the facts strip
-    // (release date, developer, publisher, tags), which closes the first screen
-    selector: '.aika-cine-facts',
-    insert: (anchor, element) => anchor.insertAdjacentElement('afterend', element),
-  },
-  {
-    // Default client, header meta column (release date, developer, genres)
-    selector: '#game_highlights .glance_ctn',
-    insert: (anchor, element) => anchor.insertAdjacentElement('afterend', element),
-  },
-  {
-    // Default client, header container
-    selector: '#game_highlights .game_header_image_ctn',
-    insert: (anchor, element) => anchor.insertAdjacentElement('afterend', element),
-  },
-];
+// Themes can move Steam's breadcrumbs out of the title area, or hide them on
+// narrow windows. Keep the card in normal flow beside the title or above the art.
+function mountInHeader(root: Element, card: HTMLElement): boolean {
+  const crumbs = Array.from(root.querySelectorAll<HTMLElement>('.breadcrumbs'));
+  const breadcrumb = crumbs.find(visible);
+  let host: HTMLElement | null;
+  let before: Element | null = null;
+  let layout: string;
 
-const STORE_CONTAINER_SELECTORS = [...HERO_TARGETS.map(t => t.selector), SIDEBAR_SELECTOR].join(
-  ', '
-);
-
-interface RenderState {
-  data: HltbGameResult | null;
-  showViewDetails: boolean;
-  position: StorePosition;
-}
-
-let state: RenderState | null = null;
-let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
-
-function isVisible(el: Element | null): el is HTMLElement {
-  if (!el) return false;
-  const rect = el.getBoundingClientRect();
-  return rect.width > 40 && rect.height > 4;
-}
-
-function insertInHero(element: HTMLElement): boolean {
-  for (const target of HERO_TARGETS) {
-    const anchor = document.querySelector(target.selector);
-    if (!isVisible(anchor) || !anchor.parentElement) continue;
-
-    target.insert(anchor, element);
-    return true;
+  if (breadcrumb) {
+    const title = breadcrumb.closest<HTMLElement>('.page_title_area');
+    host = title ?? breadcrumb;
+    layout = title ? 'title' : 'crumbs';
+  } else {
+    const art = Array.from(root.querySelectorAll<HTMLElement>('.game_header_image_ctn')).find(visible);
+    if (art) {
+      host = art.parentElement;
+      before = art;
+      layout = 'art';
+    } else {
+      const moved = crumbs.find(el => !el.closest('.page_title_area') && visible(el.parentElement));
+      if (!moved) return false;
+      host = moved.parentElement;
+      before = moved.nextElementSibling;
+      layout = 'header';
+    }
   }
 
-  return false;
-}
-
-function insertInSidebar(element: HTMLElement, position: string): boolean {
-  const sidebar = document.querySelector(SIDEBAR_SELECTOR);
-  if (!sidebar) return false;
-
-  if (position === 'top') {
-    sidebar.insertBefore(element, sidebar.firstChild);
-    return true;
+  if (!host) return false;
+  if (card.dataset.hltbHeader !== layout) card.dataset.hltbHeader = layout;
+  if (host !== card.parentElement || (before && before !== card && card.nextElementSibling !== before)) {
+    host.insertBefore(card, before);
   }
-
-  if (position === 'bottom') {
-    sidebar.appendChild(element);
-    return true;
-  }
-
-  const selector = POSITION_SELECTORS[position];
-  if (!selector) return false;
-
-  const target = document.querySelector(selector);
-  if (!target?.parentElement) return false;
-
-  target.parentElement.insertBefore(element, target.nextSibling);
   return true;
 }
 
-function getHeroLane(): HTMLElement {
-  const existing = document.getElementById(HERO_LANE_ID);
-  if (existing) return existing;
-
-  const lane = document.createElement('div');
-  lane.id = HERO_LANE_ID;
-  return lane;
-}
-
-function place(element: HTMLElement, position: StorePosition): Placement {
-  if (position === 'hero') {
-    const lane = getHeroLane();
-    if (element.parentElement !== lane) lane.appendChild(element);
-    element.classList.add(HERO_CLASS);
-
-    if (insertInHero(lane)) return 'hero';
-
-    // Header not available: keep the card in view at the top of the sidebar
-    element.classList.remove(HERO_CLASS);
-    lane.remove();
-
-    if (insertInSidebar(element, 'top')) return 'sidebar';
-    return insertInSidebar(element, 'bottom') ? 'sidebar' : 'none';
+function watchPlacement(root: Element, card: HTMLElement, position: StorePosition): () => void {
+  function place() {
+    if (position === 'hero' && mountInHeader(root, card)) return;
+    if (card.isConnected && !card.hasAttribute('data-hltb-header')) return;
+    card.removeAttribute('data-hltb-header');
+    const sidebar = root.matches(SIDEBAR_SELECTOR) ? root : root.querySelector(SIDEBAR_SELECTOR);
+    if (!sidebar) {
+      card.remove();
+      return;
+    }
+    if (position === 'hero' || position === 'top') {
+      sidebar.prepend(card);
+      return;
+    }
+    const selector = POSITION_SELECTORS[position];
+    const target = selector && sidebar.querySelector(selector);
+    if (target) target.after(card);
+    else sidebar.append(card);
   }
 
-  if (insertInSidebar(element, position)) return 'sidebar';
-  return insertInSidebar(element, 'bottom') ? 'sidebar' : 'none';
-}
+  let frame = 0;
+  function schedule() {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      place();
+    });
+  }
 
-function render(): Placement {
-  if (!state) return 'none';
-
-  const element = state.data
-    ? createDataDisplay(state.data, state.showViewDetails)
-    : createLoadingDisplay();
-
-  return place(element, state.position);
-}
-
-// The page keeps re-rendering while it hydrates (themes rebuild their own
-// header), which can drop the card or make the header anchors appear only after
-// the first placement attempt. Retry for a minute, then leave the page alone.
-function keepCardMounted(): void {
-  if (keepAliveTimer) clearInterval(keepAliveTimer);
-
-  const deadline = Date.now() + 60000;
-  keepAliveTimer = setInterval(() => {
-    const card = document.getElementById(CONTAINER_ID);
-    const inLane = card?.parentElement?.id === HERO_LANE_ID;
-
-    if (!card) {
-      render();
-    } else if (state?.position === 'hero' && !inLane) {
-      place(card, 'hero');
-    }
-
-    if (Date.now() > deadline) {
-      clearInterval(keepAliveTimer!);
-      keepAliveTimer = null;
-    }
-  }, 500);
+  place();
+  const observer = new MutationObserver(schedule);
+  observer.observe(root, { childList: true, subtree: true });
+  if (position === 'hero') {
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', schedule);
+  }
+  return () => {
+    observer.disconnect();
+    window.removeEventListener('resize', schedule);
+    cancelAnimationFrame(frame);
+  };
 }
 
 function waitForStoreContainer(timeoutMs: number): Promise<Element | null> {
@@ -258,7 +183,6 @@ interface StoreSettings {
   storePosition: StorePosition;
   showStoreViewDetails: boolean;
 }
-
 
 async function readStoreSettings(): Promise<StoreSettings | undefined> {
   try {
@@ -307,46 +231,20 @@ export async function initStorePage(appId: number): Promise<void> {
   // Don't inject twice
   if (document.getElementById(CONTAINER_ID)) return;
 
-  state = { data: null, showViewDetails, position: storePosition };
-  if (render() === 'none') {
-    state = null;
-    console.warn('[HLTB] Could not find insertion point, skipping injection');
-    return;
-  }
-
-  keepCardMounted();
-
-  // Get fallback game name from the page
-  const nameEl = document.querySelector('.apphub_AppName');
-  const fallbackName = nameEl?.textContent?.trim();
-
-  // Fetch data
-  const result = await fetchHltbData(appId, fallbackName);
-
-  if (!state) return;
-
+  const card = createLoadingDisplay();
+  const root = container.closest('.game_page_background') ?? container.parentElement ?? container;
+  const stopWatching = watchPlacement(root, card, storePosition);
+  const name = document.querySelector('.apphub_AppName')?.textContent?.trim();
+  const result = await fetchHltbData(appId, name);
   if (!result.data) {
-    state = null;
-    if (keepAliveTimer) clearInterval(keepAliveTimer);
-    keepAliveTimer = null;
-    document.getElementById(CONTAINER_ID)?.remove();
+    stopWatching();
+    card.remove();
     return;
   }
 
-  state.data = result.data;
-
-  const existing = document.getElementById(CONTAINER_ID);
-  if (existing) existing.replaceWith(createDataDisplay(result.data, showViewDetails));
-
-  // Update display when background refresh completes
-  if (result.refreshPromise) {
-    result.refreshPromise.then(newData => {
-      if (!newData || !state) return;
-
-      state.data = newData;
-
-      const current = document.getElementById(CONTAINER_ID);
-      if (current) current.replaceWith(createDataDisplay(newData, showViewDetails));
-    });
-  }
+  const compact = storePosition === 'hero';
+  displayData(card, result.data, showViewDetails, compact);
+  result.refreshPromise?.then(data => {
+    if (data) displayData(card, data, showViewDetails, compact);
+  });
 }
